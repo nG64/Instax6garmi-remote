@@ -1,3 +1,4 @@
+using Toybox.System;
 using Toybox.WatchUi;
 
 module X6RemoteState {
