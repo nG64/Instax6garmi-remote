@@ -67,3 +67,7 @@ This work is informed by public reverse-engineering projects including:
 - arsfabula/Insta360-Remote-CIQ
 - xaionaro-go/insta360ctl
 - dstrat28/action-multicam-remote
+
+## OpenX6 NAS backup
+
+`openx6-nas-backup/` contains an experimental OpenX6 core component that mirrors the X6's recordings to a local NAS over WebDAV, as a replacement for Insta360 Cloud Backup. See [openx6-nas-backup/README.md](openx6-nas-backup/README.md) (German).

@@ -1,0 +1,13 @@
+{
+  "url": "https://192.168.1.20:5006/x6-backup",
+  "username": "x6cam",
+  "password": "HIER-PASSWORT",
+  "verify_tls": true,
+  "ca_file": null,
+  "storages": ["sd", "internal", "ssd"],
+  "folders": ["DCIM"],
+  "interval_seconds": 120,
+  "settle_seconds": 60,
+  "delete_after_upload": false,
+  "device_name": null
+}

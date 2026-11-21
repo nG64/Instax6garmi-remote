@@ -1,0 +1,23 @@
+[Unit]
+Description=X6 NAS backup (WebDAV mirror of DCIM, replaces Insta360 cloud backup)
+After=data.mount network.target x6-firstboot-settings.service
+Requires=data.mount
+
+[Service]
+Type=simple
+User=root
+Group=root
+UMask=0077
+RuntimeDirectory=x6-nas-backup
+RuntimeDirectoryMode=0755
+SELinuxContext=system_u:system_r:unconfined_t:s0-s15:c0.c1023
+ExecStart=/usr/bin/python3 -B /usr/local/sbin/x6-nas-backup.py
+Nice=10
+IOSchedulingClass=idle
+CPUSchedulingPolicy=batch
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target
