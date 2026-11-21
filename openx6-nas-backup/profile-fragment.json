@@ -1,0 +1,23 @@
+{
+  "actions": {
+    "/usr/local/sbin/x6-nas-backup.py": {
+      "kind": "asset",
+      "asset": "assets/x6-nas-backup.py",
+      "sha256": "fd36a4e22b3fbeb195a1a1f135845510f313dd0a7466641d3898229ee4952c61",
+      "asset_sha256": "fd36a4e22b3fbeb195a1a1f135845510f313dd0a7466641d3898229ee4952c61",
+      "mode": "0755",
+      "selinux": "system_u:object_r:bin_t:s0"
+    },
+    "/lib/systemd/system/x6-nas-backup.service": {
+      "kind": "asset",
+      "asset": "assets/x6-nas-backup.service",
+      "sha256": "5cc0a7708b00abc510722e4e55a87ae04e327bb6592ab0e60f09251be680eed2",
+      "asset_sha256": "5cc0a7708b00abc510722e4e55a87ae04e327bb6592ab0e60f09251be680eed2",
+      "mode": "0644",
+      "selinux": "system_u:object_r:systemd_unit_file_t:s0"
+    }
+  },
+  "links": {
+    "/lib/systemd/system/multi-user.target.wants/x6-nas-backup.service": "../x6-nas-backup.service"
+  }
+}
