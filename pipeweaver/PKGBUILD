@@ -1,0 +1,52 @@
+# Maintainer: you <you@example.com>
+# Pipeweaver – Wave-Link-Alternative für Linux (virtuelle Kanäle, Monitor-/Stream-Mix, Routing auf PipeWire-Basis)
+# Upstream: https://github.com/pipeweaver/pipeweaver
+
+pkgname=pipeweaver
+pkgver=0.1.9
+pkgrel=1
+pkgdesc="Audio management and routing tool for streaming, built on PipeWire (Wave Link alternative)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/pipeweaver/pipeweaver"
+license=('MIT')
+depends=(
+  'pipewire'
+  'qt6-base'
+  'qt6-declarative'
+  'qt6-webengine'
+  'gcc-libs'
+  'glibc'
+)
+makedepends=('git' 'rust' 'cargo' 'npm' 'clang' 'pkgconf')
+optdepends=('wireplumber: empfohlener PipeWire-Session-Manager')
+# CachyOS/Arch-LTO-Flags brechen Rust+C++-(qmetaobject)-Builds gern
+options=('!lto' '!debug')
+source=("$pkgname::git+https://github.com/pipeweaver/pipeweaver.git#tag=v$pkgver")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "$pkgname"
+  cargo fetch --locked
+  # Web-UI-Abhängigkeiten vorab installieren (daemon/build.rs ignoriert npm-Fehler stillschweigend)
+  cd web && npm ci --no-audit --no-fund
+}
+
+build() {
+  cd "$pkgname"
+  cargo build --workspace --release --frozen
+}
+
+package() {
+  cd "$pkgname"
+  install -Dm755 -t "$pkgdir/usr/bin" \
+    target/release/pipeweaver-daemon \
+    target/release/pipeweaver-client \
+    target/release/pipeweaver-app
+
+  install -Dm644 daemon/resources/icons/pipeweaver.png       "$pkgdir/usr/share/icons/hicolor/48x48/apps/pipeweaver.png"
+  install -Dm644 daemon/resources/icons/pipeweaver.svg       "$pkgdir/usr/share/icons/hicolor/scalable/apps/pipeweaver.svg"
+  install -Dm644 daemon/resources/icons/pipeweaver-large.png "$pkgdir/usr/share/pixmaps/pipeweaver.png"
+  install -Dm644 daemon/resources/desktop/pipeweaver.desktop "$pkgdir/usr/share/applications/pipeweaver.desktop"
+  install -Dm644 app/resources/pipeweaver-app.desktop       "$pkgdir/usr/share/applications/pipeweaver-app.desktop"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
