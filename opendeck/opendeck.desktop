@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=OpenDeck
+Comment=Use stream controllers like the Elgato Stream Deck
+Exec=opendeck %u
+Icon=opendeck
+Terminal=false
+Categories=Utility;
+MimeType=x-scheme-handler/opendeck;x-scheme-handler/openaction;x-scheme-handler/streamdeck;
+StartupWMClass=opendeck

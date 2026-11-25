@@ -1,0 +1,66 @@
+# Maintainer: you <you@example.com>
+# OpenDeck – Stream-Deck-Software für Linux (kompatibel mit Elgato-Stream-Deck-SDK-Plugins)
+# Upstream: https://github.com/nekename/OpenDeck
+
+pkgname=opendeck
+pkgver=2.9.1
+pkgrel=1
+pkgdesc="Stream controller software for the Elgato Stream Deck, supports original Stream Deck SDK plugins"
+arch=('x86_64' 'aarch64')
+url="https://github.com/nekename/OpenDeck"
+license=('GPL-3.0-or-later')
+depends=(
+  'gtk3'
+  'webkit2gtk-4.1'
+  'libayatana-appindicator'
+  'librsvg'
+  'systemd-libs'   # libudev für hidapi
+  'hicolor-icon-theme'
+  'xdg-utils'
+)
+makedepends=('git' 'rust' 'cargo' 'deno' 'pkgconf')
+optdepends=(
+  'wine: Windows-only Stream-Deck-Plugins ausführen'
+  'nodejs: Node.js-basierte Stream-Deck-Plugins ausführen'
+)
+# Arch/CachyOS-LTO-Flags (-flto / linker-plugin-lto) brechen Rust/Tauri-Builds gern
+options=('!lto' '!debug')
+source=("$pkgname::git+https://github.com/nekename/OpenDeck.git#tag=v$pkgver"
+        "opendeck.desktop")
+sha256sums=('SKIP'
+            'SKIP')
+
+prepare() {
+  cd "$pkgname"
+  export DENO_DIR="$srcdir/deno-cache"
+  deno install --frozen
+  # Rust-Abhängigkeiten vorab laden (Haupt-App + mitgeliefertes Starterpack-Plugin)
+  cargo fetch --locked --manifest-path src-tauri/Cargo.toml
+  for p in plugins/*/; do
+    [ -f "$p/Cargo.toml" ] && cargo fetch --locked --manifest-path "$p/Cargo.toml"
+  done
+}
+
+build() {
+  cd "$pkgname"
+  export DENO_DIR="$srcdir/deno-cache"
+  # -> src-tauri/target/release/opendeck + src-tauri/target/plugins/
+  deno task tauri build --no-bundle
+}
+
+package() {
+  cd "$pkgname/src-tauri"
+
+  install -Dm755 target/release/opendeck "$pkgdir/usr/bin/opendeck"
+
+  # Tauri sucht Ressourcen unter /usr/lib/<productName>/ wenn die Binary in /usr/bin liegt
+  install -dm755 "$pkgdir/usr/lib/opendeck"
+  cp -r --no-preserve=ownership target/plugins "$pkgdir/usr/lib/opendeck/plugins"
+
+  # udev-Regeln, damit der Stream Deck ohne root nutzbar ist
+  install -Dm644 bundle/40-streamdeck.rules "$pkgdir/usr/lib/udev/rules.d/40-streamdeck.rules"
+  install -Dm644 bundle/opendeck.metainfo.xml "$pkgdir/usr/share/metainfo/opendeck.metainfo.xml"
+  install -Dm644 icons/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/opendeck.png"
+  install -Dm644 "$srcdir/opendeck.desktop" "$pkgdir/usr/share/applications/opendeck.desktop"
+  install -Dm644 ../LICENSE.md "$pkgdir/usr/share/licenses/$pkgname/LICENSE.md"
+}
