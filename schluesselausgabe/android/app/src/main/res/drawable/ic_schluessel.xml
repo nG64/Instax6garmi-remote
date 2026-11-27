@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Einfacher Schlüssel, weiß auf blauem Hintergrund -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="6" android:fillColor="#00000000"
+        android:pathData="M30,54 a11,11 0 1,1 22,0 a11,11 0 1,1 -22,0" />
+    <path android:fillColor="#FFFFFF" android:pathData="M51,51 H80 V57 H51 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M68,57 H74 V66 H68 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M76,57 H80 V63 H76 Z" />
+</vector>

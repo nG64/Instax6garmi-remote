@@ -623,9 +623,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   };
   var $ = function (id) { return document.getElementById(id); };
   var mappe = null, mitarbeiter = [], mitRaum = false;
-  var ordnerMoeglich = typeof window.showDirectoryPicker === "function";
+  // In der Android-App gibt es statt Ordner-Dialog/Download eine Brücke zum Speichern
+  var APP = window.AndroidApp || null;
+  var ordnerMoeglich = !APP && typeof window.showDirectoryPicker === "function";
 
-  if (ordnerMoeglich) {
+  if (APP) {
+    $("ordner").hidden = false; $("zip").hidden = true; $("drucken").hidden = true;
+    $("speicherHinweis").textContent = "Gespeichert wird unter „Downloads/Schluesselausgabe“, sortiert nach Raum.";
+    document.querySelector("#drop").innerHTML = "<strong>Excel-Datei auswählen</strong><br>" + document.querySelector("#drop .hint").outerHTML;
+  } else if (ordnerMoeglich) {
     $("ordner").hidden = false;
     $("zip").className = "sec";
     $("speicherHinweis").textContent = "„In Ordner speichern“ legt die PDFs direkt in einem Ordner Ihrer Wahl ab. Einzelne PDFs gibt es über den Knopf in der Liste.";
@@ -820,7 +826,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       b.onclick = function () { oeffneUnterschrift(mitarbeiter[+b.dataset.sign]); };
     });
     $("liste").querySelectorAll("button[data-pdf]").forEach(function (b) {
-      b.onclick = function () { var m = mitarbeiter[+b.dataset.pdf]; herunterladen(erstellePdf(m).output("blob"), m.datei); };
+      b.onclick = function () {
+        var m = mitarbeiter[+b.dataset.pdf];
+        if (!APP) { herunterladen(erstellePdf(m).output("blob"), m.datei); return; }
+        try { status("Gespeichert: " + appSpeichere(m)); } catch (e) { status(e.message, "warn"); }
+      };
     });
     $("alle").onclick = function () { mitarbeiter.forEach(function (m) { m.an = true; }); zeigeListe(); };
     $("keine").onclick = function () { mitarbeiter.forEach(function (m) { m.an = false; }); zeigeListe(); };
@@ -852,7 +862,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   function aktualisiereKnoepfe() {
     var n = ausgewaehlt().length, t = n === 1 ? "1 PDF" : n + " PDFs";
     ["ordner", "zip", "drucken"].forEach(function (id) { $(id).disabled = !n; });
-    $("ordner").textContent = n ? t + " in Ordner speichern" : "PDFs in Ordner speichern";
+    $("ordner").textContent = n ? t + (APP ? " speichern" : " in Ordner speichern") : (APP ? "PDFs speichern" : "PDFs in Ordner speichern");
     $("zip").textContent = n ? t + " als ZIP herunterladen" : "PDFs als ZIP herunterladen";
   }
 
@@ -931,6 +941,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return doc;
   }
 
+  function appSpeichere(m) {
+    var b64 = erstellePdf(m).output("datauristring").split(",").pop();
+    var ergebnis = APP.speichere((m.ordner ? m.ordner + "/" : "") + m.datei, b64);
+    if (!ergebnis || ergebnis.indexOf("FEHLER") === 0) throw new Error(ergebnis || "Speichern fehlgeschlagen");
+    return ergebnis;
+  }
   function herunterladen(blob, name) {
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob); a.download = name;
@@ -941,6 +957,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   $("ordner").onclick = async function () {
     var liste = ausgewaehlt(), ordner;
+    if (APP) {
+      this.disabled = true;
+      try {
+        for (var k = 0; k < liste.length; k++) {
+          status("Speichere " + (k + 1) + " von " + liste.length + " …"); await warte();
+          appSpeichere(liste[k]);
+        }
+        status(liste.length + " PDFs unter „Downloads/Schluesselausgabe“ gespeichert" + (mitRaum ? " (Unterordner je Raum)." : "."));
+      } catch (e) { status("Fehler beim Speichern: " + e.message, "warn"); }
+      this.disabled = false; return;
+    }
     try { ordner = await window.showDirectoryPicker({ mode: "readwrite" }); }
     catch (e) { if (e.name !== "AbortError") status("Ordner konnte nicht geöffnet werden: " + e.message, "warn"); return; }
     this.disabled = true;
@@ -1076,6 +1103,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     $("overlay").hidden = true; document.body.style.overflow = ""; aktuell = null;
   }
   $("ovAbbrechen").onclick = schliesseUnterschrift;
+  window.appZurueck = function () { if (!$("overlay").hidden) { schliesseUnterschrift(); return true; } return false; };
   window.addEventListener("resize", function () { if (!$("overlay").hidden && leer) padGroesse(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !$("overlay").hidden) schliesseUnterschrift(); });
 
@@ -1087,7 +1115,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     await dbSet(sigSchluessel(m), m.sig);
     schliesseUnterschrift();
     // PDF sofort fertigstellen: in den festgelegten Speicherort, sonst als Download
-    var ort = await speichereInSigOrdner(m);
+    var ort = "";
+    if (APP) { try { ort = appSpeichere(m); } catch (e) { status(e.message, "warn"); } }
+    else ort = await speichereInSigOrdner(m);
     if (ort) { m.sig.gespeichert = "PDF gespeichert"; }
     else { herunterladen(erstellePdf(m).output("blob"), m.datei); m.sig.gespeichert = "PDF heruntergeladen"; ort = "Download-Ordner/" + m.datei; }
     await dbSet(sigSchluessel(m), m.sig);
@@ -1103,7 +1133,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     dbGet("sigOrdner").then(function (h) { if (h) { sigOrdner = h; zeigeSigOrdner(); } });
   }
   function zeigeSigOrdner() {
-    $("sigOrdnerInfo").innerHTML = sigOrdner
+    $("sigOrdnerInfo").innerHTML = APP
+      ? "Nach jeder Unterschrift wird die PDF sofort unter <b>Downloads/Schluesselausgabe</b> gespeichert" + (mitRaum ? " (Unterordner je Raum)." : ".")
+      : sigOrdner
       ? "Nach jeder Unterschrift wird die PDF sofort im Ordner <b>„" + esc(sigOrdner.name) + "“</b> gespeichert" + (mitRaum ? " (Unterordner je Raum)." : ".")
       : "Nach jeder Unterschrift wird die PDF sofort <b>heruntergeladen</b> (Download-Ordner)." +
         (ordnerMoeglich ? " Tipp: Speicherort festlegen, dann landen die PDFs direkt im richtigen Raum-Ordner." : "");
