@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Schlüsselausgabe</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #fff; --text: #1d1f23; --muted: #626873;
+    --line: #d9dce1; --accent: #1f5fbf; --accent-text: #fff; --warn: #a15c00; --warn-bg: #fff4e0;
+    --ok: #1e7a3c; --ok-bg: #e7f5ec;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Arial, "Segoe UI", Helvetica, sans-serif; background: var(--bg); color: var(--text); }
+  .app { max-width: 980px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+  .card h2 { font-size: 16px; margin: 0 0 14px; display: flex; gap: 10px; align-items: center; }
+  .num { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--accent-text); font-size: 14px; }
+  label { display: block; font-size: 13px; font-weight: bold; margin: 12px 0 4px; }
+  input[type=text], textarea, select { width: 100%; font: inherit; font-size: 15px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text); }
+  textarea { min-height: 170px; line-height: 1.45; resize: vertical; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .drop { border: 2px dashed var(--line); border-radius: 10px; padding: 28px 16px; text-align: center; cursor: pointer; transition: .15s; }
+  .drop:hover, .drop.over { border-color: var(--accent); background: #eef3fb; }
+  .drop strong { color: var(--accent); }
+  .file-ok { margin-top: 10px; font-size: 14px; }
+  .warn { background: var(--warn-bg); color: var(--warn); border-radius: 6px; padding: 10px 12px; font-size: 14px; margin-top: 12px; }
+  .ok { background: var(--ok-bg); color: var(--ok); border-radius: 6px; padding: 10px 12px; font-size: 14px; margin-top: 12px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  @media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { background: #f0f1f4; position: sticky; top: 0; }
+  td.x { width: 30px; text-align: center; }
+  td.datei { font-family: Consolas, monospace; font-size: 12px; color: var(--muted); word-break: break-all; }
+  .list-wrap { max-height: 360px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; margin-top: 10px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  button { font: inherit; font-size: 16px; padding: 12px 22px; border-radius: 8px; border: 0; background: var(--accent); color: var(--accent-text); cursor: pointer; }
+  button:disabled { opacity: .4; cursor: default; }
+  button.sec { background: #e6e8ec; color: var(--text); font-size: 14px; padding: 8px 14px; }
+  button.mini { font-size: 12px; padding: 4px 10px; background: #e6e8ec; color: var(--text); }
+  .preview-wrap { overflow: auto; background: #8a8f98; padding: 20px; border-radius: 10px; margin-top: 14px; }
+  .preview-wrap .seite { margin: 0 auto; box-shadow: 0 2px 10px rgba(0,0,0,.3); transform-origin: top center; }
+
+  /* ---------- Vorschau / Druckseite (A4) ---------- */
+  .seite {
+    width: 210mm; height: 297mm; background: #fff; color: #000; position: relative;
+    padding: 20mm 25mm; font-family: Arial, "Liberation Sans", Helvetica, sans-serif; overflow: hidden;
+  }
+  .seite .kopf { display: flex; justify-content: space-between; font-size: 10pt; }
+  .seite h3 { font-size: 18pt; margin: 14mm 0 0; padding-bottom: 3mm; border-bottom: 0.3mm solid #000; }
+  .seite .text { font-size: 11pt; line-height: 1.5; margin-top: 10mm; white-space: pre-wrap; }
+  .seite .daten { position: absolute; left: 25mm; right: 25mm; top: 192mm; }
+  .seite .feld { display: flex; align-items: flex-end; margin-bottom: 8mm; }
+  .seite .feld b { width: 40mm; font-size: 11pt; }
+  .seite .feld span { flex: 1; border-bottom: 0.15mm solid #000; font-size: 12pt; padding-bottom: 1mm; }
+  .seite .unterschrift { position: absolute; left: 25mm; right: 25mm; top: 247mm; display: flex; gap: 15mm; }
+  .seite .unterschrift div { flex: 1; border-top: 0.3mm solid #000; padding-top: 1.5mm; font-size: 9pt; }
+
+  #druck { display: none; }
+  @page { size: A4; margin: 0; }
+  @media print {
+    body { background: #fff; }
+    .app { display: none; }
+    #druck { display: block; }
+    #druck .seite { page-break-after: always; break-after: page; }
+    #druck .seite:last-child { page-break-after: auto; break-after: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Schlüsselausgabe</h1>
+  <p class="sub">Erstellt aus einer Excel-Liste für jeden Mitarbeiter eine eigene PDF-Empfangsbestätigung zum Unterschreiben.</p>
+
+  <div class="card">
+    <h2><span class="num">1</span> Mitarbeiterliste laden</h2>
+    <div class="drop" id="drop">
+      Excel-Datei hierher ziehen oder <strong>klicken zum Auswählen</strong><br>
+      <span class="hint">Benötigte Spalten: „Name“ (oder „Vorname“ und „Nachname“) und „Spindnummer“</span>
+    </div>
+    <input type="file" id="datei" accept=".xlsx,.xlsm,.xls,.csv,.ods" hidden>
+    <div id="blattWahl" hidden>
+      <label for="blatt">Tabellenblatt</label>
+      <select id="blatt"></select>
+    </div>
+    <div class="file-ok" id="dateiInfo"></div>
+    <div id="fehler"></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="num">2</span> Text anpassen</h2>
+    <div class="row">
+      <div>
+        <label for="firma">Firmenname</label>
+        <input type="text" id="firma" placeholder="z. B. Muster GmbH">
+      </div>
+      <div>
+        <label for="datum">Datum oben rechts</label>
+        <input type="text" id="datum">
+      </div>
+    </div>
+    <label for="titel">Überschrift</label>
+    <input type="text" id="titel">
+    <label for="text">Text</label>
+    <textarea id="text"></textarea>
+    <div class="hint">Platzhalter: <b>{spind}</b> = Spindnummer, <b>{name}</b> = Name, <b>{firma}</b> = Firmenname. Eingaben werden in diesem Browser gespeichert.</div>
+    <p><button class="sec" id="zuruecksetzen" type="button">Standardtext wiederherstellen</button></p>
+  </div>
+
+  <div class="card">
+    <h2><span class="num">3</span> PDFs erstellen</h2>
+    <div id="liste"><p class="hint">Noch keine Liste geladen.</p></div>
+    <div class="actions" style="margin-top:16px">
+      <button id="ordner" disabled hidden>PDFs in Ordner speichern</button>
+      <button id="zip" disabled>PDFs als ZIP herunterladen</button>
+      <button id="drucken" class="sec" disabled>Alle direkt drucken</button>
+    </div>
+    <div class="hint" id="speicherHinweis"></div>
+    <div id="status"></div>
+    <div class="preview-wrap" id="vorschauWrap" hidden><div id="vorschau"></div></div>
+  </div>
+</div>
+
+<div id="druck"></div>
+
+<script>/*__XLSX__*/</script>
+<script>/*__JSPDF__*/</script>
+<script>/*__JSZIP__*/</script>
+<script>var SCHRIFT_NORMAL = "/*__FONT_REGULAR__*/", SCHRIFT_FETT = "/*__FONT_BOLD__*/";</script>
+<script>
+(function () {
+  "use strict";
+  var STANDARD = {
+    titel: "Empfangsbestätigung Spindschlüssel",
+    text: "Hiermit bestätige ich, den Schlüssel für den mir zugewiesenen Spind Nr. {spind} von der Firma {firma} erhalten zu haben.\n\n" +
+      "Ich verpflichte mich, den Schlüssel sorgfältig aufzubewahren, ihn nicht an Dritte weiterzugeben und keine Kopien anfertigen zu lassen. " +
+      "Ein Verlust des Schlüssels ist unverzüglich zu melden. Bei Verlust oder Beschädigung können die Kosten für Ersatz bzw. Austausch des Schlosses in Rechnung gestellt werden.\n\n" +
+      "Bei Beendigung des Arbeitsverhältnisses oder auf Aufforderung ist der Schlüssel umgehend zurückzugeben."
+  };
+  var $ = function (id) { return document.getElementById(id); };
+  var mappe = null, mitarbeiter = [];
+  var ordnerMoeglich = typeof window.showDirectoryPicker === "function";
+
+  if (ordnerMoeglich) {
+    $("ordner").hidden = false;
+    $("zip").className = "sec";
+    $("speicherHinweis").textContent = "„In Ordner speichern“ legt die PDFs direkt in einem Ordner Ihrer Wahl ab. Einzelne PDFs gibt es über den Knopf in der Liste.";
+  } else {
+    $("speicherHinweis").textContent = "Die ZIP-Datei enthält eine PDF pro Mitarbeiter. Einzelne PDFs gibt es über den Knopf in der Liste.";
+  }
+
+  // ---------- Einstellungen merken ----------
+  function laden(k, d) { try { var v = localStorage.getItem("schluessel." + k); return v == null ? d : v; } catch (e) { return d; } }
+  function speichern(k, v) { try { localStorage.setItem("schluessel." + k, v); } catch (e) {} }
+  $("firma").value = laden("firma", "");
+  $("titel").value = laden("titel", STANDARD.titel);
+  $("text").value = laden("text", STANDARD.text);
+  $("datum").value = new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+  ["firma", "titel", "text"].forEach(function (k) {
+    $(k).addEventListener("input", function () { speichern(k, $(k).value); zeichneVorschau(); });
+  });
+  $("datum").addEventListener("input", zeichneVorschau);
+  $("zuruecksetzen").onclick = function () {
+    $("titel").value = STANDARD.titel; $("text").value = STANDARD.text;
+    speichern("titel", STANDARD.titel); speichern("text", STANDARD.text); zeichneVorschau();
+  };
+
+  // ---------- Datei laden ----------
+  var drop = $("drop");
+  drop.onclick = function () { $("datei").click(); };
+  $("datei").onchange = function () { if (this.files[0]) leseDatei(this.files[0]); this.value = ""; };
+  drop.addEventListener("dragover", function (e) { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", function () { drop.classList.remove("over"); });
+  drop.addEventListener("drop", function (e) {
+    e.preventDefault(); drop.classList.remove("over");
+    if (e.dataTransfer.files[0]) leseDatei(e.dataTransfer.files[0]);
+  });
+  window.addEventListener("dragover", function (e) { e.preventDefault(); });
+  window.addEventListener("drop", function (e) { e.preventDefault(); });
+
+  function fehler(msg) { $("fehler").innerHTML = msg ? '<div class="warn">' + esc(msg) + "</div>" : ""; }
+  function status(msg, art) { $("status").innerHTML = msg ? '<div class="' + (art || "ok") + '">' + esc(msg) + "</div>" : ""; }
+
+  function leseDatei(f) {
+    fehler(""); status("");
+    var r = new FileReader();
+    r.onload = function () {
+      try {
+        mappe = XLSX.read(new Uint8Array(r.result), { type: "array" });
+      } catch (e) { fehler("Die Datei konnte nicht gelesen werden: " + e.message); return; }
+      var sel = $("blatt"); sel.innerHTML = "";
+      mappe.SheetNames.forEach(function (n) { var o = document.createElement("option"); o.textContent = n; sel.appendChild(o); });
+      var gefunden = mappe.SheetNames.find(function (n) { return werteAus(n).ok; });
+      sel.value = gefunden || mappe.SheetNames[0];
+      $("blattWahl").hidden = mappe.SheetNames.length < 2;
+      $("dateiInfo").textContent = "Geladen: " + f.name;
+      blattUebernehmen();
+    };
+    r.readAsArrayBuffer(f);
+  }
+  $("blatt").onchange = blattUebernehmen;
+
+  function finde(kopf, muster, ausser) {
+    for (var i = 0; i < kopf.length; i++) {
+      var k = kopf[i];
+      if (muster.some(function (m) { return k.indexOf(m) >= 0; }) &&
+          !(ausser || []).some(function (a) { return k.indexOf(a) >= 0; })) return i;
+    }
+    return -1;
+  }
+
+  function werteAus(blattName) {
+    var zeilen = XLSX.utils.sheet_to_json(mappe.Sheets[blattName], { header: 1, raw: false, defval: "", blankrows: false })
+      .map(function (z) { return z.map(function (c) { return String(c == null ? "" : c).trim(); }); })
+      .filter(function (z) { return z.some(Boolean); });
+    for (var zi = 0; zi < Math.min(zeilen.length, 15); zi++) {
+      var kopf = zeilen[zi].map(function (k) { return k.toLowerCase(); });
+      var iSpind = finde(kopf, ["spind", "schrank", "fach"]);
+      var iVor = finde(kopf, ["vorname"]);
+      var iNach = finde(kopf, ["nachname", "familienname"]);
+      var iName = finde(kopf, ["name", "mitarbeiter"], ["vor", "nach", "familien"]);
+      if (iSpind >= 0 && (iName >= 0 || iNach >= 0)) {
+        var liste = [];
+        zeilen.slice(zi + 1).forEach(function (z) {
+          var name = (iVor >= 0 || iNach >= 0) ? [z[iVor] || "", z[iNach] || ""].filter(Boolean).join(" ") : "";
+          if (!name && iName >= 0) name = z[iName] || "";
+          if (name) liste.push({ name: name, spind: (z[iSpind] || "").replace(/\.0$/, ""), an: true });
+        });
+        return { ok: true, liste: liste, kopf: zeilen[zi] };
+      }
+    }
+    return { ok: false, kopf: zeilen[0] || [] };
+  }
+
+  function blattUebernehmen() {
+    var e = werteAus($("blatt").value);
+    if (!e.ok) {
+      mitarbeiter = [];
+      fehler("In diesem Tabellenblatt wurden keine Spalten „Name“ (bzw. „Vorname“/„Nachname“) und „Spindnummer“ gefunden. " +
+        "Gefundene Überschriften: " + (e.kopf.join(", ") || "(keine)"));
+    } else {
+      fehler(""); mitarbeiter = e.liste;
+      if (!mitarbeiter.length) fehler("Die Liste enthält keine Mitarbeiter.");
+    }
+    vergibDateinamen(); zeigeListe(); zeichneVorschau();
+  }
+
+  // ---------- Dateinamen ----------
+  var ERSATZ = { "ä": "ae", "ö": "oe", "ü": "ue", "Ä": "Ae", "Ö": "Oe", "Ü": "Ue", "ß": "ss", "ı": "i", "İ": "I",
+    "ł": "l", "Ł": "L", "đ": "d", "Đ": "D", "ø": "o", "Ø": "O", "æ": "ae", "Æ": "Ae", "œ": "oe", "Œ": "Oe" };
+  function sicher(s) {
+    return String(s).replace(/[äöüÄÖÜßıİłŁđĐøØæÆœŒ]/g, function (c) { return ERSATZ[c]; })
+      .normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^A-Za-z0-9-]+/g, "_").replace(/^_+|_+$/g, "");
+  }
+  function vergibDateinamen() {
+    var vergeben = {};
+    mitarbeiter.forEach(function (m) {
+      var basis = "Schluesselausgabe_" + (sicher(m.name) || "Mitarbeiter") + (m.spind ? "_Spind_" + sicher(m.spind) : "");
+      var name = basis, n = 2;
+      while (vergeben[name.toLowerCase()]) name = basis + "_" + n++;
+      vergeben[name.toLowerCase()] = true;
+      m.datei = name + ".pdf";
+    });
+  }
+
+  // ---------- Liste ----------
+  function zeigeListe() {
+    if (!mitarbeiter.length) { $("liste").innerHTML = '<p class="hint">Noch keine Liste geladen.</p>'; aktualisiereKnoepfe(); return; }
+    var ohneSpind = mitarbeiter.filter(function (m) { return !m.spind; }).length;
+    var html = '<div class="actions"><span><b>' + mitarbeiter.length + "</b> Mitarbeiter gefunden.</span>" +
+      '<button class="sec" type="button" id="alle">Alle auswählen</button><button class="sec" type="button" id="keine">Keine</button></div>' +
+      (ohneSpind ? '<div class="warn">' + ohneSpind + " Mitarbeiter ohne Spindnummer. Dort bleibt die Nummer zum Ausfüllen frei.</div>" : "") +
+      '<div class="list-wrap"><table><thead><tr><th class="x">✓</th><th>Name</th><th>Spind</th><th>Dateiname</th><th></th></tr></thead><tbody>';
+    mitarbeiter.forEach(function (m, i) {
+      html += '<tr><td class="x"><input type="checkbox" data-i="' + i + '"' + (m.an ? " checked" : "") + "></td><td>" +
+        esc(m.name) + "</td><td>" + (m.spind ? esc(m.spind) : '<span class="hint">–</span>') + '</td><td class="datei">' +
+        esc(m.datei) + '</td><td><button class="mini" type="button" data-pdf="' + i + '">PDF</button></td></tr>';
+    });
+    $("liste").innerHTML = html + "</tbody></table></div>";
+    $("liste").querySelectorAll("input[type=checkbox]").forEach(function (cb) {
+      cb.onchange = function () { mitarbeiter[+cb.dataset.i].an = cb.checked; aktualisiereKnoepfe(); };
+    });
+    $("liste").querySelectorAll("button[data-pdf]").forEach(function (b) {
+      b.onclick = function () { var m = mitarbeiter[+b.dataset.pdf]; herunterladen(erstellePdf(m).output("blob"), m.datei); };
+    });
+    $("alle").onclick = function () { mitarbeiter.forEach(function (m) { m.an = true; }); zeigeListe(); };
+    $("keine").onclick = function () { mitarbeiter.forEach(function (m) { m.an = false; }); zeigeListe(); };
+    aktualisiereKnoepfe();
+  }
+  function ausgewaehlt() { return mitarbeiter.filter(function (m) { return m.an; }); }
+  function aktualisiereKnoepfe() {
+    var n = ausgewaehlt().length, t = n === 1 ? "1 PDF" : n + " PDFs";
+    ["ordner", "zip", "drucken"].forEach(function (id) { $(id).disabled = !n; });
+    $("ordner").textContent = n ? t + " in Ordner speichern" : "PDFs in Ordner speichern";
+    $("zip").textContent = n ? t + " als ZIP herunterladen" : "PDFs als ZIP herunterladen";
+  }
+
+  // ---------- PDF erzeugen ----------
+  function erstellePdf(m) {
+    var doc = new jspdf.jsPDF({ unit: "mm", format: "a4", compress: true });
+    doc.addFileToVFS("Sans.ttf", SCHRIFT_NORMAL); doc.addFont("Sans.ttf", "Sans", "normal");
+    doc.addFileToVFS("Sans-Bold.ttf", SCHRIFT_FETT); doc.addFont("Sans-Bold.ttf", "Sans", "bold");
+    var firma = $("firma").value.trim() || "[Firmenname]";
+    var B = 210, L = 25, R = B - 25, W = R - L;
+    doc.setProperties({ title: $("titel").value + " – " + m.name, subject: "Spind " + (m.spind || ""), author: firma });
+
+    // Kopf
+    doc.setFont("Sans", "normal"); doc.setFontSize(10);
+    doc.text(firma, L, 20);
+    doc.text($("datum").value, R, 20, { align: "right" });
+    doc.setFont("Sans", "bold"); doc.setFontSize(18);
+    doc.text(doc.splitTextToSize($("titel").value, W)[0] || "", L, 40);
+    doc.setLineWidth(0.3); doc.line(L, 43, R, 43);
+
+    // Fließtext mit fett gesetzter Spindnummer
+    var pt = 11, zeile = pt * 1.5 * 0.3528, y = 55;
+    doc.setFontSize(pt);
+    $("text").value.split("\n").forEach(function (absatz) {
+      var woerter = [];
+      absatz.split(/(\{spind\}|\{name\}|\{firma\})/).forEach(function (teil) {
+        var fett = false, t = teil;
+        if (teil === "{spind}") { t = m.spind || "_______"; fett = true; }
+        else if (teil === "{name}") t = m.name;
+        else if (teil === "{firma}") t = firma;
+        t.split(/(\s+)/).forEach(function (w) { if (w) woerter.push({ t: w, fett: fett, leer: /^\s+$/.test(w) }); });
+      });
+      var zeilen = [[]], breite = 0;
+      woerter.forEach(function (w) {
+        doc.setFont("Sans", w.fett ? "bold" : "normal");
+        var wb = doc.getTextWidth(w.leer ? " " : w.t);
+        if (!w.leer && breite + wb > W && zeilen[zeilen.length - 1].length) {
+          var akt = zeilen[zeilen.length - 1];
+          while (akt.length && akt[akt.length - 1].leer) akt.pop();
+          zeilen.push([]); breite = 0;
+        }
+        if (w.leer && !zeilen[zeilen.length - 1].length) return;
+        zeilen[zeilen.length - 1].push({ t: w.leer ? " " : w.t, fett: w.fett, leer: w.leer, b: wb });
+        breite += wb;
+      });
+      zeilen.forEach(function (z) {
+        var x = L;
+        z.forEach(function (w) {
+          if (!w.leer) { doc.setFont("Sans", w.fett ? "bold" : "normal"); doc.text(w.t, x, y); }
+          x += w.b;
+        });
+        y += zeile;
+      });
+    });
+
+    // Datenblock
+    [["Mitarbeiter/in:", m.name, 200], ["Spindnummer:", m.spind || "", 212]].forEach(function (f) {
+      doc.setFont("Sans", "bold"); doc.setFontSize(11); doc.text(f[0], L, f[2]);
+      doc.setFont("Sans", "normal"); doc.setFontSize(12); doc.text(f[1], L + 40, f[2] - 0.8);
+      doc.setLineWidth(0.15); doc.line(L + 40, f[2] + 0.7, R, f[2] + 0.7);
+    });
+
+    // Unterschriften
+    var feld = (W - 15) / 2;
+    doc.setLineWidth(0.3);
+    doc.line(L, 255, L + feld, 255); doc.line(R - feld, 255, R, 255);
+    doc.setFont("Sans", "normal"); doc.setFontSize(9);
+    doc.text("Ort, Datum", L, 259);
+    doc.text("Unterschrift " + m.name, R - feld, 259);
+    return doc;
+  }
+
+  function herunterladen(blob, name) {
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+  }
+  function warte() { return new Promise(function (r) { setTimeout(r, 0); }); }
+
+  $("ordner").onclick = async function () {
+    var liste = ausgewaehlt(), ordner;
+    try { ordner = await window.showDirectoryPicker({ mode: "readwrite" }); }
+    catch (e) { if (e.name !== "AbortError") status("Ordner konnte nicht geöffnet werden: " + e.message, "warn"); return; }
+    this.disabled = true;
+    try {
+      for (var i = 0; i < liste.length; i++) {
+        status("Speichere " + (i + 1) + " von " + liste.length + " …");
+        await warte();
+        var h = await ordner.getFileHandle(liste[i].datei, { create: true });
+        var w = await h.createWritable();
+        await w.write(erstellePdf(liste[i]).output("blob")); await w.close();
+      }
+      status(liste.length + " PDFs im Ordner „" + ordner.name + "“ gespeichert.");
+    } catch (e) { status("Fehler beim Speichern: " + e.message, "warn"); }
+    this.disabled = false;
+  };
+
+  $("zip").onclick = async function () {
+    var liste = ausgewaehlt(), zip = new JSZip();
+    this.disabled = true;
+    for (var i = 0; i < liste.length; i++) {
+      status("Erstelle PDF " + (i + 1) + " von " + liste.length + " …");
+      await warte();
+      zip.file(liste[i].datei, erstellePdf(liste[i]).output("arraybuffer"));
+    }
+    var blob = await zip.generateAsync({ type: "blob" });
+    var datum = new Date().toISOString().slice(0, 10);
+    herunterladen(blob, "Schluesselausgabe_" + datum + ".zip");
+    status(liste.length + " PDFs als ZIP heruntergeladen (im Download-Ordner). Zum Entpacken rechte Maustaste → „Alle extrahieren“.");
+    this.disabled = false;
+  };
+
+  // ---------- Vorschau & Direktdruck ----------
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function seite(m) {
+    var firma = $("firma").value.trim() || "[Firmenname]";
+    var text = esc($("text").value)
+      .replace(/\{spind\}/g, "<b>" + esc(m.spind || "_______") + "</b>")
+      .replace(/\{name\}/g, esc(m.name))
+      .replace(/\{firma\}/g, esc(firma));
+    return '<div class="seite">' +
+      '<div class="kopf"><span>' + esc(firma) + "</span><span>" + esc($("datum").value) + "</span></div>" +
+      "<h3>" + esc($("titel").value) + "</h3>" +
+      '<div class="text">' + text + "</div>" +
+      '<div class="daten"><div class="feld"><b>Mitarbeiter/in:</b><span>' + esc(m.name) + "</span></div>" +
+      '<div class="feld"><b>Spindnummer:</b><span>' + esc(m.spind || " ") + "</span></div></div>" +
+      '<div class="unterschrift"><div>Ort, Datum</div><div>Unterschrift ' + esc(m.name) + "</div></div>" +
+      "</div>";
+  }
+  function zeichneVorschau() {
+    var m = ausgewaehlt()[0] || mitarbeiter[0];
+    if (!m) { $("vorschauWrap").hidden = true; return; }
+    $("vorschauWrap").hidden = false;
+    $("vorschau").innerHTML = '<div class="hint" style="color:#fff;margin-bottom:8px;text-align:center">Vorschau: ' + esc(m.datei) + "</div>" + seite(m);
+    skaliere();
+  }
+  function skaliere() {
+    var s = $("vorschau").querySelector(".seite"); if (!s) return;
+    var verf = $("vorschauWrap").clientWidth - 40, breite = s.offsetWidth;
+    var f = Math.min(1, verf / breite);
+    s.style.transform = "scale(" + f + ")";
+    s.style.marginBottom = (-(1 - f) * s.offsetHeight) + "px";
+    s.style.marginLeft = s.style.marginRight = f < 1 ? (-(1 - f) * breite / 2) + "px" : "auto";
+  }
+  window.addEventListener("resize", skaliere);
+
+  $("drucken").onclick = function () {
+    $("druck").innerHTML = ausgewaehlt().map(seite).join("");
+    window.print();
+  };
+})();
+</script>
+</body>
+</html>

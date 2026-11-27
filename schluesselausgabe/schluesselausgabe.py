@@ -185,9 +185,21 @@ def zeichne_seite(c: canvas.Canvas, name: str, spind: str, firma: str):
     c.showPage()
 
 
+ERSATZ = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "Ä": "Ae", "Ö": "Oe", "Ü": "Ue", "ß": "ss",
+                        "ı": "i", "İ": "I", "ł": "l", "Ł": "L", "đ": "d", "Đ": "D", "ø": "o", "Ø": "O",
+                        "æ": "ae", "Æ": "Ae", "œ": "oe", "Œ": "Oe"})
+
+
+def sicher(text: str) -> str:
+    import unicodedata
+    t = unicodedata.normalize("NFD", text.translate(ERSATZ))
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    return re.sub(r"[^A-Za-z0-9-]+", "_", t).strip("_")
+
+
 def dateiname(name: str, spind: str) -> str:
-    sauber = re.sub(r"[^\w\-]+", "_", name, flags=re.UNICODE).strip("_")
-    return f"Schluessel_{spind}_{sauber}.pdf"
+    """Gleiches Schema wie Schluesselausgabe.html, z. B. Schluesselausgabe_Juergen_Weiss_Spind_7.pdf"""
+    return "Schluesselausgabe_" + (sicher(name) or "Mitarbeiter") + (f"_Spind_{sicher(spind)}" if spind else "")
 
 
 def main():
@@ -208,8 +220,14 @@ def main():
     if a.einzeln:
         ordner = a.ausgabe if a.ausgabe.suffix.lower() != ".pdf" else a.ausgabe.with_suffix("")
         ordner.mkdir(parents=True, exist_ok=True)
+        vergeben = set()
         for name, spind in mitarbeiter:
-            c = canvas.Canvas(str(ordner / dateiname(name, spind)), pagesize=A4)
+            basis = dateiname(name, spind)
+            datei, n = basis, 2
+            while datei.lower() in vergeben:
+                datei, n = f"{basis}_{n}", n + 1
+            vergeben.add(datei.lower())
+            c = canvas.Canvas(str(ordner / (datei + ".pdf")), pagesize=A4)
             zeichne_seite(c, name, spind, a.firma)
             c.save()
         print(f"{len(mitarbeiter)} PDFs erstellt in: {ordner}")
