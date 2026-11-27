@@ -130,7 +130,7 @@
     <h2><span class="num">1</span> Mitarbeiterliste laden</h2>
     <div class="drop" id="drop">
       Excel-Datei hierher ziehen oder <strong>klicken zum Auswählen</strong><br>
-      <span class="hint">Benötigte Spalten: „Name“ (oder „Vorname“ und „Nachname“) und „Spindnummer“ – optional „Raum“ (dann ein Ordner je Raum)</span>
+      <span class="hint">Benötigte Spalten: „Name“ (oder „Vorname“ und „Nachname“) und „Spindnummer“ – optional „Raum“ (dann ein Ordner je Raum).<br>Optional ein Blatt „Räume“ mit den Spalten „Raum“, „Von“, „Bis“ (Spindbereich je Raum).</span>
     </div>
     <input type="file" id="datei" accept=".xlsx,.xlsm,.xls,.csv,.ods" hidden>
     <div id="blattWahl" hidden>
@@ -749,6 +749,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       sel.value = gefunden || mappe.SheetNames[0];
       $("blattWahl").hidden = mappe.SheetNames.length < 2;
       $("dateiInfo").textContent = "Geladen: " + f.name;
+      raeumeBereiche = leseRaeume(); dbSet("raeume", raeumeBereiche);
       blattUebernehmen();
     };
     r.readAsArrayBuffer(f);
@@ -818,6 +819,35 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
   dbGet("manuell").then(function (v) { manuelle = v || []; if (manuelle.length) gesamtliste(); });
 
+  // ---------- Blatt „Räume“: Spindbereich (Von–Bis) je Raum ----------
+  var raeumeBereiche = [];
+  dbGet("raeume").then(function (v) { if (v && !raeumeBereiche.length) raeumeBereiche = v; });
+  function raumKey(r) { return String(r == null ? "" : r).trim().toLowerCase().replace(/\.0$/, ""); }
+  function leseRaeume() {
+    var ergebnis = [];
+    mappe.SheetNames.forEach(function (blattName) {
+      if (ergebnis.length) return;
+      var zeilen = XLSX.utils.sheet_to_json(mappe.Sheets[blattName], { header: 1, raw: false, defval: "", blankrows: false })
+        .map(function (z) { return z.map(function (c) { return String(c == null ? "" : c).trim(); }); });
+      for (var zi = 0; zi < Math.min(zeilen.length, 15); zi++) {
+        var kopf = zeilen[zi].map(function (k) { return k.toLowerCase(); });
+        var spalte = function (re) { for (var i = 0; i < kopf.length; i++) if (re.test(kopf[i])) return i; return -1; };
+        var iRaum = finde(kopf, ["raum", "räum", "zimmer"]), iVon = spalte(/(^|\s)(von|ab)(\s|$)|erste/), iBis = spalte(/(^|\s)bis(\s|$)|letzte/);
+        if (iRaum < 0 || iVon < 0 || iBis < 0 || iVon === iRaum || iBis === iRaum) continue;
+        zeilen.slice(zi + 1).forEach(function (z) {
+          var raum = (z[iRaum] || "").replace(/\.0$/, ""), von = parseInt(z[iVon], 10), bis = parseInt(z[iBis], 10);
+          if (raum && von > 0 && bis >= von) ergebnis.push({ raum: raum, von: von, bis: bis });
+        });
+        break;
+      }
+    });
+    return ergebnis;
+  }
+  function bereichVon(raum) {
+    var k = raumKey(raum);
+    return k ? raeumeBereiche.find(function (b) { return raumKey(b.raum) === k; }) || null : null;
+  }
+
   function blattUebernehmen() {
     var e = werteAus($("blatt").value);
     excelListe = []; excelMitRaum = false;
@@ -866,6 +896,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     $("sucheBereich").hidden = !mitarbeiter.length;
     if (!mitarbeiter.length) { $("liste").innerHTML = '<p class="hint">Noch keine Liste geladen.</p>'; aktualisiereKnoepfe(); return; }
     var anzHand = mitarbeiter.filter(function (m) { return m.manuell; }).length;
+    var falscherBereich = mitarbeiter.filter(function (m) {
+      var b = bereichVon(m.raum), n = reineNummer(m.spind);
+      return b && n !== null && (n < b.von || n > b.bis);
+    });
     var unterschrieben = mitarbeiter.filter(function (m) { return m.sig; }).length;
     var ohneSpind = mitarbeiter.filter(function (m) { return !m.spind; }).length;
     var raeume = {}; mitarbeiter.forEach(function (m) { if (m.raum) raeume[m.ordner] = 1; });
@@ -873,6 +907,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var html = '<div class="actions"><span><b>' + mitarbeiter.length + "</b> Mitarbeiter gefunden" + (anzRaeume ? " in <b>" + anzRaeume + "</b> " + (anzRaeume === 1 ? "Raum" : "Räumen") : "") + ", davon <b>" + unterschrieben + "</b> erledigt, <b>" + (mitarbeiter.length - unterschrieben) + "</b> offen" + (anzHand ? " (" + anzHand + " von Hand ergänzt)" : "") + ".</span>" +
       '<button class="sec" type="button" id="alle">Alle auswählen</button><button class="sec" type="button" id="keine">Keine</button></div>' +
       (ohneSpind ? '<div class="warn">' + ohneSpind + " Mitarbeiter ohne Spindnummer. Dort bleibt die Nummer zum Ausfüllen frei.</div>" : "") +
+      (falscherBereich.length ? '<div class="warn">Spindnummer passt nicht zum Raum laut Blatt „Räume“: ' +
+        falscherBereich.map(function (m) { var b = bereichVon(m.raum); return esc(m.name) + " (Spind " + esc(m.spind) + ", Raum " + esc(m.raum) + ": " + b.von + "–" + b.bis + ")"; }).join(", ") + "</div>" : "") +
       '<div class="list-wrap"><table><thead><tr><th class="x" title="Auswahl für die Sammel-Knöpfe unten (Ordner/ZIP/Drucken)">Auswahl</th><th>Nachname, Vorname</th><th>Spind</th>' + (mitRaum ? "<th>Raum</th>" : "") + '<th>Ordner / Dateiname</th><th>Status</th><th></th></tr></thead><tbody>';
     mitarbeiter.forEach(function (m, i) {
       html += '<tr' + (m.sig ? ' class="erledigt"' : "") + '><td class="x"><input type="checkbox" data-i="' + i + '"' + (m.an ? " checked" : "") + "></td><td>" +
@@ -1117,7 +1153,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.addEventListener("resize", skaliere);
 
   // ---------- Mitarbeiter von Hand hinzufügen ----------
-  function maxSpind() { var n = parseInt(laden2("maxSpind"), 10); return n > 0 ? n : 0; }
+  function maxSpind() {
+    if (raeumeBereiche.length) return raeumeBereiche.reduce(function (a, b) { return Math.max(a, b.bis); }, 0);
+    var n = parseInt(laden2("maxSpind"), 10); return n > 0 ? n : 0;
+  }
   function laden2(k) { try { return localStorage.getItem("schluessel." + k) || ""; } catch (e) { return ""; } }
   function speichern2(k, v) { try { localStorage.setItem("schluessel." + k, v); } catch (e) {} }
   function reineNummer(t) { t = String(t || "").trim(); return /^\d+$/.test(t) ? parseInt(t, 10) : null; }
@@ -1134,7 +1173,22 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
   // Zufällige freie Nummer, möglichst nah an den Spinden im selben Raum (sonst nah an allen belegten)
   function spindVorschlag(raum, ausser) {
-    var belegt = belegteNummern(), grenze = obergrenze(belegt), frei = [];
+    var belegt = belegteNummern(), b = bereichVon(raum), frei = [];
+    if (b) {
+      for (var k = b.von; k <= b.bis; k++) if (!belegt[k] && k !== ausser) frei.push(k);
+      if (!frei.length) return { nr: null, text: "Raum " + b.raum + " ist voll: alle Spinde " + b.von + "–" + b.bis + " sind vergeben." };
+      var imR = mitarbeiter.filter(function (m) { return raumKey(m.raum) === raumKey(raum); })
+        .map(function (m) { return reineNummer(m.spind); }).filter(function (x) { return x !== null; });
+      var kand = frei;
+      if (imR.length) {
+        var abst = function (x) { return imR.reduce(function (a, y) { return Math.min(a, Math.abs(x - y)); }, Infinity); };
+        var mn = frei.reduce(function (a, x) { return Math.min(a, abst(x)); }, Infinity);
+        kand = frei.filter(function (x) { return abst(x) <= mn + 2; });
+      }
+      return { nr: kand[Math.floor(Math.random() * kand.length)],
+        text: "Vorschlag: freier Spind in Raum " + b.raum + " (Spinde " + b.von + "–" + b.bis + ", davon " + frei.length + " frei)." };
+    }
+    var grenze = obergrenze(belegt);
     for (var n = 1; n <= grenze; n++) if (!belegt[n] && n !== ausser) frei.push(n);
     if (!frei.length) return { nr: null, text: "Keine freie Nummer bis " + grenze + " gefunden." };
     var r = String(raum || "").trim().toLowerCase();
@@ -1159,18 +1213,27 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var akt = $("neuSpind").value.trim();
     if (nurWennVorschlag === true && akt && akt !== letzterVorschlag) return;
     var v = spindVorschlag($("neuRaum").value, reineNummer(akt));
-    if (v.nr !== null) { $("neuSpind").value = v.nr; letzterVorschlag = String(v.nr); }
+    if (v.nr !== null) {
+      $("neuSpind").value = v.nr; letzterVorschlag = String(v.nr);
+      if (document.activeElement === $("neuSpind")) $("neuSpind").select();   // Tippen ersetzt den Vorschlag
+    }
     $("neuSpindInfo").textContent = v.text;
   }
-  function zeigeMax() { $("maxAnzeige").textContent = maxSpind() || "noch nicht festgelegt"; $("maxSpind").value = maxSpind() || ""; }
+  function zeigeMax() {
+    var ausExcel = raeumeBereiche.length > 0;
+    $("maxAnzeige").textContent = (maxSpind() || "noch nicht festgelegt") + (ausExcel ? " (aus Blatt „Räume“)" : "");
+    $("maxSpind").value = maxSpind() || ""; $("maxSpind").disabled = ausExcel;
+  }
   $("neuMa").onclick = function () {
     ["neuVor", "neuNach", "neuRaum", "neuSpind"].forEach(function (id) { $(id).value = ""; });
     var raeume = {}; mitarbeiter.forEach(function (m) { if (m.raum) raeume[m.raum] = 1; });
+    raeumeBereiche.forEach(function (b) { raeume[b.raum] = 1; });
     $("raumListe").innerHTML = Object.keys(raeume).sort(sortierer.compare).map(function (r) { return '<option value="' + esc(r) + '">'; }).join("");
     neuFehler(""); zeigeMax(); letzterVorschlag = ""; wuerfeln();
     $("neuDialog").hidden = false; $("neuVor").focus();
   };
   $("neuWuerfeln").onclick = function () { wuerfeln(); };
+  $("neuSpind").addEventListener("focus", function () { var f = this; setTimeout(function () { f.select(); }, 0); });
   $("neuRaum").addEventListener("change", function () { wuerfeln(true); });   // neuer Raum → Vorschlag in dessen Nähe
   $("maxSpind").addEventListener("change", function () {
     var n = parseInt($("maxSpind").value, 10);
@@ -1184,7 +1247,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (!vor || !nach) { neuFehler("Bitte Vor- und Nachname eintragen."); return; }
     var dopp = mitarbeiter.find(function (m) { return nameSchluessel(m) === (nach + "|" + vor).toLowerCase().replace(/\s+/g, " "); });
     if (dopp) { neuFehler(dopp.name + " steht bereits in der Liste" + (dopp.spind ? " (Spind " + dopp.spind + ")" : "") + "."); return; }
+    var bereich = bereichVon(raum);
+    if (raeumeBereiche.length && !bereich) {
+      neuFehler(raum ? "Raum „" + raum + "“ steht nicht im Blatt „Räume“. Bitte einen Raum aus der Liste wählen." : "Bitte einen Raum auswählen."); return;
+    }
     if (spind) {
+      var nr = reineNummer(spind);
+      if (bereich && (nr === null || nr < bereich.von || nr > bereich.bis)) {
+        neuFehler("Spind " + spind + " gehört nicht zu Raum " + bereich.raum + " (Spinde " + bereich.von + "–" + bereich.bis + ")."); return;
+      }
       var besetzt = mitarbeiter.find(function (m) { return String(m.spind).trim().toLowerCase() === spind.toLowerCase(); });
       if (besetzt) { neuFehler("Spind " + spind + " ist bereits an " + besetzt.name + " vergeben."); return; }
       var n = reineNummer(spind);
