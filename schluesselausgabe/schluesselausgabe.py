@@ -21,7 +21,6 @@ import argparse
 import csv
 import re
 import sys
-from datetime import date
 from pathlib import Path
 
 from reportlab.lib.pagesizes import A4
@@ -157,16 +156,13 @@ def zeichne_seite(c: canvas.Canvas, name: str, spind: str, raum: str, firma: str
     rand = 2.5 * cm
     textbreite = breite - 2 * rand
 
-    # Kopf: links Firma + Datum, rechts Logo (logo.png neben dem Script)
+    # Kopf: Logo oben rechts (logo.png neben dem Script)
     if LOGO.exists():
         from reportlab.lib.utils import ImageReader
         bild = ImageReader(str(LOGO))
         bw, bh = bild.getSize()
         lb = 4.2 * cm
         c.drawImage(bild, breite - rand - lb, hoehe - 1.5 * cm - lb * bh / bw, lb, lb * bh / bw, mask="auto")
-    c.setFont(SCHRIFT, 10)
-    c.drawString(rand, hoehe - 1.95 * cm, firma)
-    c.drawString(rand, hoehe - 2.45 * cm, date.today().strftime("%d.%m.%Y"))
 
     c.setFont(SCHRIFT_FETT, 18)
     c.drawString(rand, hoehe - 4.3 * cm, TITEL)

@@ -128,29 +128,7 @@
   </div>
 
   <div class="card">
-    <h2><span class="num">2</span> Text anpassen</h2>
-    <div class="row">
-      <div>
-        <label for="firma">Firmenname</label>
-        <input type="text" id="firma" placeholder="z. B. Stadtwerke Bochum Netz GmbH">
-      </div>
-      <div>
-        <label for="datum">Datum</label>
-        <input type="text" id="datum">
-      </div>
-    </div>
-    <label for="ort">Ort (wird bei der Unterschrift als „Ort, Datum“ eingetragen)</label>
-    <input type="text" id="ort">
-    <label for="titel">Überschrift</label>
-    <input type="text" id="titel">
-    <label for="text">Text</label>
-    <textarea id="text"></textarea>
-    <div class="hint">Platzhalter: <b>{spind}</b> = Spindnummer, <b>{name}</b> = Name, <b>{raum}</b> = Raum, <b>{firma}</b> = Firmenname. Eingaben werden in diesem Browser gespeichert.</div>
-    <p><button class="sec" id="zuruecksetzen" type="button">Standardtext wiederherstellen</button></p>
-  </div>
-
-  <div class="card">
-    <h2><span class="num">3</span> Unterschreiben und PDFs erstellen</h2>
+    <h2><span class="num">2</span> Unterschreiben und PDFs erstellen</h2>
     <div id="sucheBereich" hidden>
       <div class="speicherort">
         <span id="sigOrdnerInfo"></span>
@@ -223,23 +201,8 @@
     $("speicherHinweis").textContent = "Die ZIP-Datei enthält eine PDF pro Mitarbeiter. Einzelne PDFs gibt es über den Knopf in der Liste.";
   }
 
-  // ---------- Einstellungen merken ----------
-  function laden(k, d) { try { var v = localStorage.getItem("schluessel." + k); return v == null ? d : v; } catch (e) { return d; } }
-  function speichern(k, v) { try { localStorage.setItem("schluessel." + k, v); } catch (e) {} }
-  $("firma").value = laden("firma", "");
-  $("ort").value = laden("ort", "Bochum");
-  $("ort").addEventListener("input", function () { speichern("ort", $("ort").value); });
-  $("titel").value = laden("titel", STANDARD.titel);
-  $("text").value = laden("text3", STANDARD.text);
-  $("datum").value = new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
-  ["firma", "titel", "text"].forEach(function (k) {
-    $(k).addEventListener("input", function () { speichern(k === "text" ? "text3" : k, $(k).value); zeichneVorschau(); });
-  });
-  $("datum").addEventListener("input", zeichneVorschau);
-  $("zuruecksetzen").onclick = function () {
-    $("titel").value = STANDARD.titel; $("text").value = STANDARD.text;
-    speichern("titel", STANDARD.titel); speichern("text3", STANDARD.text); zeichneVorschau();
-  };
+  // Fester Text und Ort (keine Anpassung im Programm nötig)
+  var TITEL = STANDARD.titel, TEXT = STANDARD.text, ORT = "Bochum";
 
   // ---------- Gespeicherte Unterschriften (IndexedDB, bleibt nach Neuladen erhalten) ----------
   var dbP = new Promise(function (res) {
@@ -466,31 +429,26 @@
     var doc = new jspdf.jsPDF({ unit: "mm", format: "a4", compress: true });
     doc.addFileToVFS("Sans.ttf", SCHRIFT_NORMAL); doc.addFont("Sans.ttf", "Sans", "normal");
     doc.addFileToVFS("Sans-Bold.ttf", SCHRIFT_FETT); doc.addFont("Sans-Bold.ttf", "Sans", "bold");
-    var firma = $("firma").value.trim() || "[Firmenname]";
     var B = 210, L = 25, R = B - 25, W = R - L;
-    doc.setProperties({ title: $("titel").value + " – " + m.name, subject: "Spind " + (m.spind || ""), author: firma });
+    doc.setProperties({ title: TITEL + " – " + m.name, subject: "Spind " + (m.spind || "") });
 
-    // Kopf: links Firma + Datum, rechts Logo
+    // Kopf: Logo oben rechts
     var logoB = 42, logoH = logoB / LOGO_SEITENVERHAELTNIS;
     doc.addImage(LOGO, "PNG", R - logoB, 15, logoB, logoH, "logo", "SLOW");
-    doc.setFont("Sans", "normal"); doc.setFontSize(10);
-    doc.text(firma, L, 19.5);
-    doc.text($("datum").value, L, 24.5);
     doc.setFont("Sans", "bold"); doc.setFontSize(18);
-    doc.text(doc.splitTextToSize($("titel").value, W)[0] || "", L, 43);
+    doc.text(doc.splitTextToSize(TITEL, W)[0] || "", L, 43);
     doc.setLineWidth(0.3); doc.line(L, 46, R, 46);
 
     // Fließtext mit fett gesetzter Spindnummer
     var pt = 11, zeile = pt * 1.5 * 0.3528, y = 58;
     doc.setFontSize(pt);
-    $("text").value.split("\n").forEach(function (absatz) {
+    TEXT.split("\n").forEach(function (absatz) {
       var woerter = [];
-      absatz.split(/(\{spind\}|\{name\}|\{firma\}|\{raum\})/).forEach(function (teil) {
+      absatz.split(/(\{spind\}|\{name\}|\{raum\})/).forEach(function (teil) {
         var fett = false, t = teil;
         if (teil === "{spind}") { t = m.spind || "_______"; fett = true; }
         else if (teil === "{name}") t = m.name;
         else if (teil === "{raum}") t = m.raum || "_______";
-        else if (teil === "{firma}") t = firma;
         t.split(/(\s+)/).forEach(function (w) { if (w) woerter.push({ t: w, fett: fett, leer: /^\s+$/.test(w) }); });
       });
       var zeilen = [[]], breite = 0;
@@ -586,15 +544,13 @@
   // ---------- Vorschau & Direktdruck ----------
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function seite(m, ohneSig) {
-    var firma = $("firma").value.trim() || "[Firmenname]";
-    var text = esc($("text").value)
+    var text = esc(TEXT)
       .replace(/\{spind\}/g, "<b>" + esc(m.spind || "_______") + "</b>")
       .replace(/\{name\}/g, esc(m.name))
-      .replace(/\{raum\}/g, esc(m.raum || "_______"))
-      .replace(/\{firma\}/g, esc(firma));
+      .replace(/\{raum\}/g, esc(m.raum || "_______"));
     return '<div class="seite">' +
-      '<div class="kopf"><div class="links">' + esc(firma) + "<br>" + esc($("datum").value) + '</div><img src="' + LOGO + '" alt=""></div>' +
-      "<h3>" + esc($("titel").value) + "</h3>" +
+      '<div class="kopf"><div class="links"></div><img src="' + LOGO + '" alt=""></div>' +
+      "<h3>" + esc(TITEL) + "</h3>" +
       '<div class="text">' + text + "</div>" +
       '<div class="daten"><div class="feld"><b>Mitarbeiter/in:</b><span>' + esc(m.name) + "</span></div>" +
       '<div class="feld"><b>Spindnummer:</b><span>' + esc(m.spind || "\u00a0") + "</span></div>" +
@@ -695,7 +651,7 @@
     if (leer) { $("padOk").textContent = "Bitte zuerst unterschreiben"; setTimeout(function () { $("padOk").textContent = "Unterschrift übernehmen"; }, 1500); return; }
     var bild = zuschneiden(); if (!bild) return;
     var m = aktuell;
-    m.sig = { bild: bild.bild, b: bild.b, h: bild.h, ort: $("ort").value.trim(), datum: heute(), zeit: new Date().toISOString() };
+    m.sig = { bild: bild.bild, b: bild.b, h: bild.h, ort: ORT, datum: heute(), zeit: new Date().toISOString() };
     await dbSet(sigSchluessel(m), m.sig);
     schliesseUnterschrift();
     // PDF sofort fertigstellen: in den festgelegten Speicherort, sonst als Download
