@@ -195,7 +195,7 @@
 <div class="modal" id="neuDialog" hidden role="dialog" aria-modal="true" aria-labelledby="neuTitel">
   <div class="modal-karte">
     <h2 id="neuTitel">Mitarbeiter hinzufügen</h2>
-    <div class="hint">Für Mitarbeiter, die in der Excel-Liste fehlen. Der Eintrag bleibt auf diesem Gerät gespeichert.</div>
+    <div class="hint">Für Mitarbeiter, die in der Excel-Liste fehlen. Danach unterschreibt der Mitarbeiter wie alle anderen, und die PDF wird erstellt.</div>
     <div class="row">
       <div><label for="neuVor">Vorname</label><input type="text" id="neuVor" autocomplete="off" autocapitalize="words"></div>
       <div><label for="neuNach">Nachname</label><input type="text" id="neuNach" autocomplete="off" autocapitalize="words"></div>
@@ -217,8 +217,7 @@
     <div id="neuFehler"></div>
     <div class="modal-aktionen">
       <button class="sec" id="neuAbbrechen" type="button">Abbrechen</button>
-      <button class="sec" id="neuNurSpeichern" type="button">Nur hinzufügen</button>
-      <button id="neuUnterschreiben" type="button">Hinzufügen und unterschreiben</button>
+      <button id="neuUnterschreiben" type="button">Weiter zur Unterschrift</button>
     </div>
   </div>
 </div>
@@ -1196,13 +1195,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     await dbSet("manuell", manuelle);
     $("neuDialog").hidden = true;
     await gesamtliste();
-    status("✔ " + vor + " " + nach + " wurde hinzugefügt" + (spind ? " (Spind " + spind + ")" : "") + ".");
+    status(vor + " " + nach + " wurde hinzugefügt" + (spind ? " (Spind " + spind + ")" : "") + " – bitte unterschreiben lassen.");
     if (direktUnterschreiben) {
       var m = mitarbeiter.find(function (x) { return x.id === eintrag.id; });
       if (m) oeffneUnterschrift(m);
     }
   }
-  $("neuNurSpeichern").onclick = function () { neuSpeichern(false); };
   $("neuUnterschreiben").onclick = function () { neuSpeichern(true); };
 
   // ---------- Unterschrift per Touch ----------
