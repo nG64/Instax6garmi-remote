@@ -47,12 +47,14 @@
   /* ---------- Vorschau / Druckseite (A4) ---------- */
   .seite {
     width: 210mm; height: 297mm; background: #fff; color: #000; position: relative;
-    padding: 20mm 25mm; font-family: Arial, "Liberation Sans", Helvetica, sans-serif; overflow: hidden;
+    padding: 15mm 25mm 20mm; font-family: Arial, "Liberation Sans", Helvetica, sans-serif; overflow: hidden;
   }
-  .seite .kopf { display: flex; justify-content: space-between; font-size: 10pt; }
-  .seite h3 { font-size: 18pt; margin: 14mm 0 0; padding-bottom: 3mm; border-bottom: 0.3mm solid #000; }
+  .seite .kopf { display: flex; justify-content: space-between; align-items: flex-start; font-size: 10pt; height: 14mm; }
+  .seite .kopf .links { padding-top: 1mm; line-height: 5mm; }
+  .seite .kopf img { width: 42mm; height: 14mm; }
+  .seite h3 { font-size: 18pt; margin: 8mm 0 0; padding-bottom: 3mm; border-bottom: 0.3mm solid #000; }
   .seite .text { font-size: 11pt; line-height: 1.5; margin-top: 10mm; white-space: pre-wrap; }
-  .seite .daten { position: absolute; left: 25mm; right: 25mm; top: 192mm; }
+  .seite .daten { position: absolute; left: 25mm; right: 25mm; top: 186mm; }
   .seite .feld { display: flex; align-items: flex-end; margin-bottom: 8mm; }
   .seite .feld b { width: 40mm; font-size: 11pt; }
   .seite .feld span { flex: 1; border-bottom: 0.15mm solid #000; font-size: 12pt; padding-bottom: 1mm; }
@@ -79,7 +81,7 @@
     <h2><span class="num">1</span> Mitarbeiterliste laden</h2>
     <div class="drop" id="drop">
       Excel-Datei hierher ziehen oder <strong>klicken zum Auswählen</strong><br>
-      <span class="hint">Benötigte Spalten: „Name“ (oder „Vorname“ und „Nachname“) und „Spindnummer“</span>
+      <span class="hint">Benötigte Spalten: „Name“ (oder „Vorname“ und „Nachname“) und „Spindnummer“ – optional „Raum“ (dann ein Ordner je Raum)</span>
     </div>
     <input type="file" id="datei" accept=".xlsx,.xlsm,.xls,.csv,.ods" hidden>
     <div id="blattWahl" hidden>
@@ -95,10 +97,10 @@
     <div class="row">
       <div>
         <label for="firma">Firmenname</label>
-        <input type="text" id="firma" placeholder="z. B. Muster GmbH">
+        <input type="text" id="firma" placeholder="z. B. Stadtwerke Bochum Netz GmbH">
       </div>
       <div>
-        <label for="datum">Datum oben rechts</label>
+        <label for="datum">Datum</label>
         <input type="text" id="datum">
       </div>
     </div>
@@ -106,7 +108,7 @@
     <input type="text" id="titel">
     <label for="text">Text</label>
     <textarea id="text"></textarea>
-    <div class="hint">Platzhalter: <b>{spind}</b> = Spindnummer, <b>{name}</b> = Name, <b>{firma}</b> = Firmenname. Eingaben werden in diesem Browser gespeichert.</div>
+    <div class="hint">Platzhalter: <b>{spind}</b> = Spindnummer, <b>{name}</b> = Name, <b>{raum}</b> = Raum, <b>{firma}</b> = Firmenname. Eingaben werden in diesem Browser gespeichert.</div>
     <p><button class="sec" id="zuruecksetzen" type="button">Standardtext wiederherstellen</button></p>
   </div>
 
@@ -129,6 +131,7 @@
 <script>/*__XLSX__*/</script>
 <script>/*__JSPDF__*/</script>
 <script>/*__JSZIP__*/</script>
+<script>var LOGO = "data:image/png;base64,/*__LOGO__*/", LOGO_SEITENVERHAELTNIS = /*__LOGO_RATIO__*/;</script>
 <script>var SCHRIFT_NORMAL = "/*__FONT_REGULAR__*/", SCHRIFT_FETT = "/*__FONT_BOLD__*/";</script>
 <script>
 (function () {
@@ -141,7 +144,7 @@
       "Bei Beendigung des Arbeitsverhältnisses oder auf Aufforderung ist der Schlüssel umgehend zurückzugeben."
   };
   var $ = function (id) { return document.getElementById(id); };
-  var mappe = null, mitarbeiter = [];
+  var mappe = null, mitarbeiter = [], mitRaum = false;
   var ordnerMoeglich = typeof window.showDirectoryPicker === "function";
 
   if (ordnerMoeglich) {
@@ -222,14 +225,18 @@
       var iVor = finde(kopf, ["vorname"]);
       var iNach = finde(kopf, ["nachname", "familienname"]);
       var iName = finde(kopf, ["name", "mitarbeiter"], ["vor", "nach", "familien"]);
+      var iRaum = finde(kopf, ["raum", "räum", "zimmer"], ["spind"]);
       if (iSpind >= 0 && (iName >= 0 || iNach >= 0)) {
         var liste = [];
         zeilen.slice(zi + 1).forEach(function (z) {
           var name = (iVor >= 0 || iNach >= 0) ? [z[iVor] || "", z[iNach] || ""].filter(Boolean).join(" ") : "";
           if (!name && iName >= 0) name = z[iName] || "";
-          if (name) liste.push({ name: name, spind: (z[iSpind] || "").replace(/\.0$/, ""), an: true });
+          if (name) liste.push({ name: name, spind: (z[iSpind] || "").replace(/\.0$/, ""),
+            raum: iRaum >= 0 ? (z[iRaum] || "").replace(/\.0$/, "") : "", an: true });
         });
-        return { ok: true, liste: liste, kopf: zeilen[zi] };
+        var sortierer = new Intl.Collator("de", { numeric: true, sensitivity: "base" });
+        liste.sort(function (a, b) { return (!a.raum - !b.raum) || sortierer.compare(a.raum, b.raum) || sortierer.compare(a.name, b.name); });
+        return { ok: true, liste: liste, kopf: zeilen[zi], mitRaum: iRaum >= 0 };
       }
     }
     return { ok: false, kopf: zeilen[0] || [] };
@@ -242,8 +249,9 @@
       fehler("In diesem Tabellenblatt wurden keine Spalten „Name“ (bzw. „Vorname“/„Nachname“) und „Spindnummer“ gefunden. " +
         "Gefundene Überschriften: " + (e.kopf.join(", ") || "(keine)"));
     } else {
-      fehler(""); mitarbeiter = e.liste;
+      fehler(""); mitarbeiter = e.liste; mitRaum = e.mitRaum;
       if (!mitarbeiter.length) fehler("Die Liste enthält keine Mitarbeiter.");
+      else if (!mitRaum) fehler("Hinweis: Keine Spalte „Raum“ gefunden – die PDFs werden nicht in Raum-Ordner sortiert.");
     }
     vergibDateinamen(); zeigeListe(); zeichneVorschau();
   }
@@ -256,9 +264,17 @@
       .normalize("NFD").replace(/[̀-ͯ]/g, "")
       .replace(/[^A-Za-z0-9-]+/g, "_").replace(/^_+|_+$/g, "");
   }
+  function ordnerName(m) {
+    if (!mitRaum) return "";
+    // Punkte bleiben erhalten (z. B. „1.23“), vor reinen Nummern kommt „Raum_“
+    var r = String(m.raum).split(".").map(sicher).filter(Boolean).join(".");
+    if (!r) return "Ohne_Raum";
+    return /^[0-9]/.test(r) ? "Raum_" + r : r;
+  }
   function vergibDateinamen() {
     var vergeben = {};
     mitarbeiter.forEach(function (m) {
+      m.ordner = ordnerName(m);
       var basis = "Schluesselausgabe_" + (sicher(m.name) || "Mitarbeiter") + (m.spind ? "_Spind_" + sicher(m.spind) : "");
       var name = basis, n = 2;
       while (vergeben[name.toLowerCase()]) name = basis + "_" + n++;
@@ -271,14 +287,17 @@
   function zeigeListe() {
     if (!mitarbeiter.length) { $("liste").innerHTML = '<p class="hint">Noch keine Liste geladen.</p>'; aktualisiereKnoepfe(); return; }
     var ohneSpind = mitarbeiter.filter(function (m) { return !m.spind; }).length;
-    var html = '<div class="actions"><span><b>' + mitarbeiter.length + "</b> Mitarbeiter gefunden.</span>" +
+    var raeume = {}; mitarbeiter.forEach(function (m) { if (m.raum) raeume[m.ordner] = 1; });
+    var anzRaeume = mitRaum ? Object.keys(raeume).length : 0;
+    var html = '<div class="actions"><span><b>' + mitarbeiter.length + "</b> Mitarbeiter gefunden" + (anzRaeume ? " in <b>" + anzRaeume + "</b> " + (anzRaeume === 1 ? "Raum" : "Räumen") : "") + ".</span>" +
       '<button class="sec" type="button" id="alle">Alle auswählen</button><button class="sec" type="button" id="keine">Keine</button></div>' +
       (ohneSpind ? '<div class="warn">' + ohneSpind + " Mitarbeiter ohne Spindnummer. Dort bleibt die Nummer zum Ausfüllen frei.</div>" : "") +
-      '<div class="list-wrap"><table><thead><tr><th class="x">✓</th><th>Name</th><th>Spind</th><th>Dateiname</th><th></th></tr></thead><tbody>';
+      '<div class="list-wrap"><table><thead><tr><th class="x">✓</th><th>Name</th><th>Spind</th>' + (mitRaum ? "<th>Raum</th>" : "") + '<th>Ordner / Dateiname</th><th></th></tr></thead><tbody>';
     mitarbeiter.forEach(function (m, i) {
       html += '<tr><td class="x"><input type="checkbox" data-i="' + i + '"' + (m.an ? " checked" : "") + "></td><td>" +
-        esc(m.name) + "</td><td>" + (m.spind ? esc(m.spind) : '<span class="hint">–</span>') + '</td><td class="datei">' +
-        esc(m.datei) + '</td><td><button class="mini" type="button" data-pdf="' + i + '">PDF</button></td></tr>';
+        esc(m.name) + "</td><td>" + (m.spind ? esc(m.spind) : '<span class="hint">–</span>') + "</td>" +
+        (mitRaum ? "<td>" + (m.raum ? esc(m.raum) : '<span class="hint">–</span>') + "</td>" : "") + '<td class="datei">' +
+        (m.ordner ? "<b>" + esc(m.ordner) + "</b>/" : "") + esc(m.datei) + '</td><td><button class="mini" type="button" data-pdf="' + i + '">PDF</button></td></tr>';
     });
     $("liste").innerHTML = html + "</tbody></table></div>";
     $("liste").querySelectorAll("input[type=checkbox]").forEach(function (cb) {
@@ -308,23 +327,26 @@
     var B = 210, L = 25, R = B - 25, W = R - L;
     doc.setProperties({ title: $("titel").value + " – " + m.name, subject: "Spind " + (m.spind || ""), author: firma });
 
-    // Kopf
+    // Kopf: links Firma + Datum, rechts Logo
+    var logoB = 42, logoH = logoB / LOGO_SEITENVERHAELTNIS;
+    doc.addImage(LOGO, "PNG", R - logoB, 15, logoB, logoH, "logo", "SLOW");
     doc.setFont("Sans", "normal"); doc.setFontSize(10);
-    doc.text(firma, L, 20);
-    doc.text($("datum").value, R, 20, { align: "right" });
+    doc.text(firma, L, 19.5);
+    doc.text($("datum").value, L, 24.5);
     doc.setFont("Sans", "bold"); doc.setFontSize(18);
-    doc.text(doc.splitTextToSize($("titel").value, W)[0] || "", L, 40);
-    doc.setLineWidth(0.3); doc.line(L, 43, R, 43);
+    doc.text(doc.splitTextToSize($("titel").value, W)[0] || "", L, 43);
+    doc.setLineWidth(0.3); doc.line(L, 46, R, 46);
 
     // Fließtext mit fett gesetzter Spindnummer
-    var pt = 11, zeile = pt * 1.5 * 0.3528, y = 55;
+    var pt = 11, zeile = pt * 1.5 * 0.3528, y = 58;
     doc.setFontSize(pt);
     $("text").value.split("\n").forEach(function (absatz) {
       var woerter = [];
-      absatz.split(/(\{spind\}|\{name\}|\{firma\})/).forEach(function (teil) {
+      absatz.split(/(\{spind\}|\{name\}|\{firma\}|\{raum\})/).forEach(function (teil) {
         var fett = false, t = teil;
         if (teil === "{spind}") { t = m.spind || "_______"; fett = true; }
         else if (teil === "{name}") t = m.name;
+        else if (teil === "{raum}") t = m.raum || "_______";
         else if (teil === "{firma}") t = firma;
         t.split(/(\s+)/).forEach(function (w) { if (w) woerter.push({ t: w, fett: fett, leer: /^\s+$/.test(w) }); });
       });
@@ -352,7 +374,9 @@
     });
 
     // Datenblock
-    [["Mitarbeiter/in:", m.name, 200], ["Spindnummer:", m.spind || "", 212]].forEach(function (f) {
+    var felder = [["Mitarbeiter/in:", m.name], ["Spindnummer:", m.spind || ""]];
+    if (mitRaum) felder.push(["Raum:", m.raum || ""]);
+    felder.map(function (f, i) { return [f[0], f[1], 194 + i * 12]; }).forEach(function (f) {
       doc.setFont("Sans", "bold"); doc.setFontSize(11); doc.text(f[0], L, f[2]);
       doc.setFont("Sans", "normal"); doc.setFontSize(12); doc.text(f[1], L + 40, f[2] - 0.8);
       doc.setLineWidth(0.15); doc.line(L + 40, f[2] + 0.7, R, f[2] + 0.7);
@@ -385,11 +409,12 @@
       for (var i = 0; i < liste.length; i++) {
         status("Speichere " + (i + 1) + " von " + liste.length + " …");
         await warte();
-        var h = await ordner.getFileHandle(liste[i].datei, { create: true });
+        var ziel = liste[i].ordner ? await ordner.getDirectoryHandle(liste[i].ordner, { create: true }) : ordner;
+        var h = await ziel.getFileHandle(liste[i].datei, { create: true });
         var w = await h.createWritable();
         await w.write(erstellePdf(liste[i]).output("blob")); await w.close();
       }
-      status(liste.length + " PDFs im Ordner „" + ordner.name + "“ gespeichert.");
+      status(liste.length + " PDFs im Ordner „" + ordner.name + "“ gespeichert" + (mitRaum ? " (in Unterordnern je Raum)." : "."));
     } catch (e) { status("Fehler beim Speichern: " + e.message, "warn"); }
     this.disabled = false;
   };
@@ -400,7 +425,7 @@
     for (var i = 0; i < liste.length; i++) {
       status("Erstelle PDF " + (i + 1) + " von " + liste.length + " …");
       await warte();
-      zip.file(liste[i].datei, erstellePdf(liste[i]).output("arraybuffer"));
+      zip.file((liste[i].ordner ? liste[i].ordner + "/" : "") + liste[i].datei, erstellePdf(liste[i]).output("arraybuffer"));
     }
     var blob = await zip.generateAsync({ type: "blob" });
     var datum = new Date().toISOString().slice(0, 10);
@@ -416,13 +441,15 @@
     var text = esc($("text").value)
       .replace(/\{spind\}/g, "<b>" + esc(m.spind || "_______") + "</b>")
       .replace(/\{name\}/g, esc(m.name))
+      .replace(/\{raum\}/g, esc(m.raum || "_______"))
       .replace(/\{firma\}/g, esc(firma));
     return '<div class="seite">' +
-      '<div class="kopf"><span>' + esc(firma) + "</span><span>" + esc($("datum").value) + "</span></div>" +
+      '<div class="kopf"><div class="links">' + esc(firma) + "<br>" + esc($("datum").value) + '</div><img src="' + LOGO + '" alt=""></div>' +
       "<h3>" + esc($("titel").value) + "</h3>" +
       '<div class="text">' + text + "</div>" +
       '<div class="daten"><div class="feld"><b>Mitarbeiter/in:</b><span>' + esc(m.name) + "</span></div>" +
-      '<div class="feld"><b>Spindnummer:</b><span>' + esc(m.spind || " ") + "</span></div></div>" +
+      '<div class="feld"><b>Spindnummer:</b><span>' + esc(m.spind || "\u00a0") + "</span></div>" +
+      (mitRaum ? '<div class="feld"><b>Raum:</b><span>' + esc(m.raum || "\u00a0") + "</span></div>" : "") + "</div>" +
       '<div class="unterschrift"><div>Ort, Datum</div><div>Unterschrift ' + esc(m.name) + "</div></div>" +
       "</div>";
   }
@@ -430,7 +457,7 @@
     var m = ausgewaehlt()[0] || mitarbeiter[0];
     if (!m) { $("vorschauWrap").hidden = true; return; }
     $("vorschauWrap").hidden = false;
-    $("vorschau").innerHTML = '<div class="hint" style="color:#fff;margin-bottom:8px;text-align:center">Vorschau: ' + esc(m.datei) + "</div>" + seite(m);
+    $("vorschau").innerHTML = '<div class="hint" style="color:#fff;margin-bottom:8px;text-align:center">Vorschau: ' + esc((m.ordner ? m.ordner + "/" : "") + m.datei) + "</div>" + seite(m);
     skaliere();
   }
   function skaliere() {

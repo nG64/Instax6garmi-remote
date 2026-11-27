@@ -3,7 +3,8 @@
 Erzeugt Schlüssel-Ausgabebelege (eine Seite pro Mitarbeiter) als PDF.
 
 Eingabe: Excel (.xlsx) oder CSV mit den Spalten
-         "Name" (oder "Vorname" + "Nachname") und "Spindnummer".
+         "Name" (oder "Vorname" + "Nachname") und "Spindnummer",
+         optional "Raum" (mit --einzeln landet dann jede PDF im Ordner ihres Raums).
          Groß-/Kleinschreibung egal, weitere Spalten werden ignoriert,
          die Kopfzeile darf auch weiter unten stehen (z. B. unter einem Titel).
          Vorlage: Mitarbeiterliste_Vorlage.xlsx
@@ -114,6 +115,7 @@ def lies_mitarbeiter(pfad: Path, blatt: str | None = None):
         i_vor = finde(kopf, "vorname")
         i_nach = finde(kopf, "nachname", "familienname")
         i_name = finde(kopf, "name", "mitarbeiter", ausser=("vor", "nach", "familien"))
+        i_raum = finde(kopf, "raum", "räum", "zimmer", ausser=("spind",))
         if i_spind is not None and (i_name is not None or i_nach is not None):
             break
     else:
@@ -122,6 +124,9 @@ def lies_mitarbeiter(pfad: Path, blatt: str | None = None):
 
     def zelle(z, i):
         return z[i] if i is not None and i < len(z) else ""
+
+    def natuerlich(t):
+        return [(0, int(x), "") if x.isdigit() else (1, 0, x.lower()) for x in re.split(r"(\d+)", t)]
 
     ergebnis = []
     for z in zeilen[zi + 1:]:
@@ -132,38 +137,51 @@ def lies_mitarbeiter(pfad: Path, blatt: str | None = None):
         else:
             name = zelle(z, i_name)
         spind = zelle(z, i_spind)
+        raum = zelle(z, i_raum)
         if spind.endswith(".0"):  # Excel liefert Zahlen manchmal als 101.0
             spind = spind[:-2]
+        if raum.endswith(".0"):
+            raum = raum[:-2]
         if name:
-            ergebnis.append((name, spind))
+            ergebnis.append((name, spind, raum))
+    ergebnis.sort(key=lambda m: (not m[2], natuerlich(m[2]), m[0].lower()))
     return ergebnis
 
 
-def zeichne_seite(c: canvas.Canvas, name: str, spind: str, firma: str):
+LOGO = Path(__file__).resolve().parent / "logo.png"
+
+
+def zeichne_seite(c: canvas.Canvas, name: str, spind: str, raum: str, firma: str, mit_raum: bool):
     breite, hoehe = A4
     rand = 2.5 * cm
     textbreite = breite - 2 * rand
 
-    # Kopf
+    # Kopf: links Firma + Datum, rechts Logo (logo.png neben dem Script)
+    if LOGO.exists():
+        from reportlab.lib.utils import ImageReader
+        bild = ImageReader(str(LOGO))
+        bw, bh = bild.getSize()
+        lb = 4.2 * cm
+        c.drawImage(bild, breite - rand - lb, hoehe - 1.5 * cm - lb * bh / bw, lb, lb * bh / bw, mask="auto")
     c.setFont(SCHRIFT, 10)
-    c.drawString(rand, hoehe - 2 * cm, firma)
-    c.drawRightString(breite - rand, hoehe - 2 * cm, date.today().strftime("%d.%m.%Y"))
+    c.drawString(rand, hoehe - 1.95 * cm, firma)
+    c.drawString(rand, hoehe - 2.45 * cm, date.today().strftime("%d.%m.%Y"))
 
     c.setFont(SCHRIFT_FETT, 18)
-    c.drawString(rand, hoehe - 4 * cm, TITEL)
+    c.drawString(rand, hoehe - 4.3 * cm, TITEL)
     c.setLineWidth(0.8)
-    c.line(rand, hoehe - 4.4 * cm, breite - rand, hoehe - 4.4 * cm)
+    c.line(rand, hoehe - 4.6 * cm, breite - rand, hoehe - 4.6 * cm)
 
     # Fließtext
     stil = ParagraphStyle("text", fontName=SCHRIFT, fontSize=11, leading=16)
     absatz = Paragraph(" ".join(TEXT.format(firma=firma, spind=spind or "____").split()), stil)
     _, h = absatz.wrap(textbreite, hoehe)
-    absatz.drawOn(c, rand, hoehe - 5.5 * cm - h)
+    absatz.drawOn(c, rand, hoehe - 5.6 * cm - h)
 
     # Datenblock unten
-    y = 9.5 * cm
-    c.setFont(SCHRIFT_FETT, 11)
-    for label, wert in (("Mitarbeiter/in:", name), ("Spindnummer:", spind)):
+    felder = [("Mitarbeiter/in:", name), ("Spindnummer:", spind)] + ([("Raum:", raum)] if mit_raum else [])
+    y = 10.3 * cm
+    for label, wert in felder:
         c.setFont(SCHRIFT_FETT, 11)
         c.drawString(rand, y, label)
         c.setFont(SCHRIFT, 12)
@@ -197,6 +215,14 @@ def sicher(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9-]+", "_", t).strip("_")
 
 
+def ordnername(raum: str) -> str:
+    """Wie in Schluesselausgabe.html: '1.23' -> 'Raum_1.23', 'Werkstatt' -> 'Werkstatt'."""
+    r = ".".join(t for t in (sicher(x) for x in raum.split(".")) if t)
+    if not r:
+        return "Ohne_Raum"
+    return f"Raum_{r}" if r[0].isdigit() else r
+
+
 def dateiname(name: str, spind: str) -> str:
     """Gleiches Schema wie Schluesselausgabe.html, z. B. Schluesselausgabe_Juergen_Weiss_Spind_7.pdf"""
     return "Schluesselausgabe_" + (sicher(name) or "Mitarbeiter") + (f"_Spind_{sicher(spind)}" if spind else "")
@@ -214,6 +240,7 @@ def main():
 
     lade_schrift()
     mitarbeiter = lies_mitarbeiter(a.liste, a.blatt)
+    mit_raum = any(m[2] for m in mitarbeiter)
     if not mitarbeiter:
         sys.exit("Keine Mitarbeiter in der Liste gefunden.")
 
@@ -221,21 +248,23 @@ def main():
         ordner = a.ausgabe if a.ausgabe.suffix.lower() != ".pdf" else a.ausgabe.with_suffix("")
         ordner.mkdir(parents=True, exist_ok=True)
         vergeben = set()
-        for name, spind in mitarbeiter:
+        for name, spind, raum in mitarbeiter:
+            ziel = ordner / ordnername(raum) if mit_raum else ordner
+            ziel.mkdir(exist_ok=True)
             basis = dateiname(name, spind)
             datei, n = basis, 2
             while datei.lower() in vergeben:
                 datei, n = f"{basis}_{n}", n + 1
             vergeben.add(datei.lower())
-            c = canvas.Canvas(str(ordner / (datei + ".pdf")), pagesize=A4)
-            zeichne_seite(c, name, spind, a.firma)
+            c = canvas.Canvas(str(ziel / (datei + ".pdf")), pagesize=A4)
+            zeichne_seite(c, name, spind, raum, a.firma, mit_raum)
             c.save()
-        print(f"{len(mitarbeiter)} PDFs erstellt in: {ordner}")
+        print(f"{len(mitarbeiter)} PDFs erstellt in: {ordner}" + (" (Unterordner je Raum)" if mit_raum else ""))
     else:
         c = canvas.Canvas(str(a.ausgabe), pagesize=A4)
         c.setTitle(TITEL)
-        for name, spind in mitarbeiter:
-            zeichne_seite(c, name, spind, a.firma)
+        for name, spind, raum in mitarbeiter:
+            zeichne_seite(c, name, spind, raum, a.firma, mit_raum)
         c.save()
         print(f"{len(mitarbeiter)} Seiten erstellt: {a.ausgabe}")
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Baut ../Schluesselausgabe.html aus vorlage.html: Bibliotheken und Schrift werden
-eingebettet, damit die Datei ohne Internet und ohne Installation läuft.
+eingebettet (inkl. ../logo.png), damit die Datei ohne Internet und ohne Installation läuft.
 
 Benötigt: npm (für den Download der Bibliotheken) und die Schrift Liberation Sans
 (Linux: Paket fonts-liberation; oder Pfade unten anpassen).
@@ -39,6 +39,11 @@ def main():
             html = html.replace(f"/*{platzhalter}*/", js, 1)
     for platzhalter, pfad in SCHRIFTEN.items():
         html = html.replace(f"/*{platzhalter}*/", base64.b64encode(Path(pfad).read_bytes()).decode(), 1)
+    logo = HIER.parent / "logo.png"
+    from struct import unpack
+    breite, hoehe = unpack(">II", logo.read_bytes()[16:24])
+    html = html.replace("/*__LOGO__*/", base64.b64encode(logo.read_bytes()).decode(), 1)
+    html = html.replace("/*__LOGO_RATIO__*/", f"{breite / hoehe:.4f}", 1)
     ZIEL.write_text(html, encoding="utf-8")
     print(f"Geschrieben: {ZIEL} ({ZIEL.stat().st_size // 1024} KB)")
 
