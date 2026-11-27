@@ -2,13 +2,17 @@
 """
 Erzeugt Schlüssel-Ausgabebelege (eine Seite pro Mitarbeiter) als PDF.
 
-Eingabe: CSV (Trennzeichen ; oder ,) oder Excel (.xlsx) mit den Spalten
-         "Name" und "Spindnummer" (Groß-/Kleinschreibung egal).
+Eingabe: Excel (.xlsx) oder CSV mit den Spalten
+         "Name" (oder "Vorname" + "Nachname") und "Spindnummer".
+         Groß-/Kleinschreibung egal, weitere Spalten werden ignoriert,
+         die Kopfzeile darf auch weiter unten stehen (z. B. unter einem Titel).
+         Vorlage: Mitarbeiterliste_Vorlage.xlsx
 
 Aufruf:
     python3 schluesselausgabe.py mitarbeiter.csv
     python3 schluesselausgabe.py mitarbeiter.xlsx -o belege.pdf --firma "Muster GmbH"
-    python3 schluesselausgabe.py mitarbeiter.csv --einzeln      # eine PDF je Mitarbeiter
+    python3 schluesselausgabe.py mitarbeiter.xlsx --blatt "Tabelle2"
+    python3 schluesselausgabe.py mitarbeiter.xlsx --einzeln     # eine PDF je Mitarbeiter
 
 Benötigt: pip install reportlab openpyxl
 """
@@ -24,6 +28,8 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph
 from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 # ---------------------------------------------------------------------------
 # Text oben auf dem Dokument – hier nach Bedarf anpassen.
@@ -44,11 +50,40 @@ umgehend zurückzugeben.
 """
 
 
-def lies_mitarbeiter(pfad: Path):
+# Schrift mit vollem Zeichensatz einbinden, damit auch Namen wie "Ayşe Yılmaz"
+# oder "Łukasz Wójcik" korrekt erscheinen. Gesucht wird in dieser Reihenfolge.
+SCHRIFTEN = [
+    ("C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/arialbd.ttf"),
+    ("/Library/Fonts/Arial.ttf", "/Library/Fonts/Arial Bold.ttf"),
+    ("/System/Library/Fonts/Supplemental/Arial.ttf", "/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
+    ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
+    ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+]
+SCHRIFT, SCHRIFT_FETT = "Helvetica", "Helvetica-Bold"
+
+
+def lade_schrift():
+    global SCHRIFT, SCHRIFT_FETT
+    for normal, fett in SCHRIFTEN:
+        if Path(normal).exists() and Path(fett).exists():
+            pdfmetrics.registerFont(TTFont("Text", normal))
+            pdfmetrics.registerFont(TTFont("Text-Fett", fett))
+            pdfmetrics.registerFontFamily("Text", normal="Text", bold="Text-Fett")
+            SCHRIFT, SCHRIFT_FETT = "Text", "Text-Fett"
+            return
+    print("Hinweis: Keine Arial/DejaVu-Schrift gefunden – Sonderzeichen außerhalb "
+          "von Deutsch/Westeuropa werden evtl. nicht korrekt dargestellt.", file=sys.stderr)
+
+
+def lies_mitarbeiter(pfad: Path, blatt: str | None = None):
     """Liest die Mitarbeiterliste und gibt [(name, spind), ...] zurück."""
     if pfad.suffix.lower() in (".xlsx", ".xlsm"):
         from openpyxl import load_workbook
-        ws = load_workbook(pfad, read_only=True, data_only=True).active
+        wb = load_workbook(pfad, read_only=True, data_only=True)
+        if blatt and blatt not in wb.sheetnames:
+            sys.exit(f"Tabellenblatt '{blatt}' nicht gefunden. Vorhanden: {wb.sheetnames}")
+        ws = wb[blatt] if blatt else wb.active
         zeilen = [["" if c is None else str(c).strip() for c in r]
                   for r in ws.iter_rows(values_only=True)]
     else:
@@ -66,17 +101,37 @@ def lies_mitarbeiter(pfad: Path):
     if not zeilen:
         sys.exit("Die Mitarbeiterliste ist leer.")
 
-    kopf = [k.lower() for k in zeilen[0]]
-    try:
-        i_name = next(i for i, k in enumerate(kopf) if "name" in k)
-        i_spind = next(i for i, k in enumerate(kopf) if "spind" in k)
-    except StopIteration:
-        sys.exit(f"Spalten 'Name' und 'Spindnummer' nicht gefunden. Gefunden: {zeilen[0]}")
+    # Kopfzeile suchen (muss nicht Zeile 1 sein, z. B. wenn oben ein Titel steht)
+    def finde(kopf, *muster, ausser=()):
+        for i, k in enumerate(kopf):
+            if any(m in k for m in muster) and not any(a in k for a in ausser):
+                return i
+        return None
+
+    for zi, z in enumerate(zeilen[:15]):
+        kopf = [k.lower() for k in z]
+        i_spind = finde(kopf, "spind", "schrank", "fach")
+        i_vor = finde(kopf, "vorname")
+        i_nach = finde(kopf, "nachname", "familienname")
+        i_name = finde(kopf, "name", "mitarbeiter", ausser=("vor", "nach", "familien"))
+        if i_spind is not None and (i_name is not None or i_nach is not None):
+            break
+    else:
+        sys.exit("Keine Kopfzeile mit den Spalten 'Name' (oder 'Vorname'/'Nachname') "
+                 f"und 'Spindnummer' gefunden. Erste Zeile: {zeilen[0]}")
+
+    def zelle(z, i):
+        return z[i] if i is not None and i < len(z) else ""
 
     ergebnis = []
-    for z in zeilen[1:]:
-        name = z[i_name] if i_name < len(z) else ""
-        spind = z[i_spind] if i_spind < len(z) else ""
+    for z in zeilen[zi + 1:]:
+        if i_vor is not None or i_nach is not None:
+            name = " ".join(t for t in (zelle(z, i_vor), zelle(z, i_nach)) if t)
+            if not name:
+                name = zelle(z, i_name)
+        else:
+            name = zelle(z, i_name)
+        spind = zelle(z, i_spind)
         if spind.endswith(".0"):  # Excel liefert Zahlen manchmal als 101.0
             spind = spind[:-2]
         if name:
@@ -90,28 +145,28 @@ def zeichne_seite(c: canvas.Canvas, name: str, spind: str, firma: str):
     textbreite = breite - 2 * rand
 
     # Kopf
-    c.setFont("Helvetica", 10)
+    c.setFont(SCHRIFT, 10)
     c.drawString(rand, hoehe - 2 * cm, firma)
     c.drawRightString(breite - rand, hoehe - 2 * cm, date.today().strftime("%d.%m.%Y"))
 
-    c.setFont("Helvetica-Bold", 18)
+    c.setFont(SCHRIFT_FETT, 18)
     c.drawString(rand, hoehe - 4 * cm, TITEL)
     c.setLineWidth(0.8)
     c.line(rand, hoehe - 4.4 * cm, breite - rand, hoehe - 4.4 * cm)
 
     # Fließtext
-    stil = ParagraphStyle("text", fontName="Helvetica", fontSize=11, leading=16)
+    stil = ParagraphStyle("text", fontName=SCHRIFT, fontSize=11, leading=16)
     absatz = Paragraph(" ".join(TEXT.format(firma=firma, spind=spind or "____").split()), stil)
     _, h = absatz.wrap(textbreite, hoehe)
     absatz.drawOn(c, rand, hoehe - 5.5 * cm - h)
 
     # Datenblock unten
     y = 9.5 * cm
-    c.setFont("Helvetica-Bold", 11)
+    c.setFont(SCHRIFT_FETT, 11)
     for label, wert in (("Mitarbeiter/in:", name), ("Spindnummer:", spind)):
-        c.setFont("Helvetica-Bold", 11)
+        c.setFont(SCHRIFT_FETT, 11)
         c.drawString(rand, y, label)
-        c.setFont("Helvetica", 12)
+        c.setFont(SCHRIFT, 12)
         c.drawString(rand + 4 * cm, y, wert)
         c.setLineWidth(0.4)
         c.line(rand + 4 * cm, y - 0.15 * cm, breite - rand, y - 0.15 * cm)
@@ -123,7 +178,7 @@ def zeichne_seite(c: canvas.Canvas, name: str, spind: str, firma: str):
     c.setLineWidth(0.8)
     c.line(rand, y, rand + feld, y)
     c.line(breite - rand - feld, y, breite - rand, y)
-    c.setFont("Helvetica", 9)
+    c.setFont(SCHRIFT, 9)
     c.drawString(rand, y - 0.5 * cm, "Ort, Datum")
     c.drawString(breite - rand - feld, y - 0.5 * cm, f"Unterschrift {name}")
 
@@ -141,10 +196,14 @@ def main():
     p.add_argument("-o", "--ausgabe", type=Path, default=Path("Schluesselausgabe.pdf"),
                    help="Ziel-PDF (bzw. Ordner bei --einzeln)")
     p.add_argument("--firma", default="[Firmenname]", help="Name der Firma für Text und Kopfzeile")
+    p.add_argument("--blatt", help="Name des Tabellenblatts (Standard: das aktive Blatt)")
     p.add_argument("--einzeln", action="store_true", help="Eine eigene PDF pro Mitarbeiter")
     a = p.parse_args()
 
-    mitarbeiter = lies_mitarbeiter(a.liste)
+    lade_schrift()
+    mitarbeiter = lies_mitarbeiter(a.liste, a.blatt)
+    if not mitarbeiter:
+        sys.exit("Keine Mitarbeiter in der Liste gefunden.")
 
     if a.einzeln:
         ordner = a.ausgabe if a.ausgabe.suffix.lower() != ".pdf" else a.ausgabe.with_suffix("")
