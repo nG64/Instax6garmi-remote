@@ -714,9 +714,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var vergeben = {};
     mitarbeiter.forEach(function (m) {
       m.ordner = ordnerName(m);
-      // Nachname_Vorname_Spind_<Nr>_Schluesselausgabe
+      // Nachname_Vorname_Spind_<Nr>
       var basis = ([sicher(m.nach), sicher(m.vor)].filter(Boolean).join("_") || "Mitarbeiter") +
-        (m.spind ? "_Spind_" + sicher(m.spind) : "") + "_Schluesselausgabe";
+        (m.spind ? "_Spind_" + sicher(m.spind) : "");
       var name = basis, n = 2;
       while (vergeben[name.toLowerCase()]) name = basis + "_" + n++;
       vergeben[name.toLowerCase()] = true;

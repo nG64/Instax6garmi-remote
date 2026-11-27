@@ -228,9 +228,9 @@ def ordnername(raum: str) -> str:
 
 
 def dateiname(vor: str, nach: str, spind: str) -> str:
-    """Gleiches Schema wie Schluesselausgabe.html, z. B. Weiss_Juergen_Spind_7_Schluesselausgabe"""
+    """Gleiches Schema wie Schluesselausgabe.html, z. B. Weiss_Juergen_Spind_7"""
     name = "_".join(t for t in (sicher(nach), sicher(vor)) if t) or "Mitarbeiter"
-    return name + (f"_Spind_{sicher(spind)}" if spind else "") + "_Schluesselausgabe"
+    return name + (f"_Spind_{sicher(spind)}" if spind else "")
 
 
 def main():
