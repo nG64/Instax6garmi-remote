@@ -66,8 +66,12 @@
   .suche-zeile input { flex: 1; min-width: 220px; font-size: 16px; padding: 10px 12px; }
   .suche-zeile select { width: auto; }
   tr[hidden] { display: none; }
-  .sig-ok { color: var(--ok); font-size: 12px; white-space: nowrap; }
-  .sig-ok b { font-size: 14px; }
+  tr.erledigt td { background: var(--ok-bg); }
+  .badge-ok { display: inline-flex; align-items: center; gap: 6px; color: #fff; background: var(--ok); border-radius: 999px; padding: 3px 10px 3px 6px; font-size: 13px; font-weight: bold; white-space: nowrap; }
+  .badge-ok i { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: #fff; color: var(--ok); font-style: normal; font-size: 13px; }
+  .badge-offen { display: inline-block; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; font-size: 12px; white-space: nowrap; }
+  .sig-info { font-size: 11px; color: var(--ok); margin-top: 3px; white-space: nowrap; }
+  .speicherort { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; background: #eef3fb; border-radius: 8px; padding: 10px 12px; font-size: 14px; }
   button.sign { font-size: 13px; padding: 7px 12px; }
   td.akt { white-space: nowrap; text-align: right; }
   td.akt button + button { margin-left: 6px; }
@@ -148,12 +152,16 @@
   <div class="card">
     <h2><span class="num">3</span> Unterschreiben und PDFs erstellen</h2>
     <div id="sucheBereich" hidden>
+      <div class="speicherort">
+        <span id="sigOrdnerInfo"></span>
+        <button class="sec" id="sigOrdner" type="button" hidden>Speicherort festlegen</button>
+      </div>
       <div class="suche-zeile">
         <input type="search" id="suche" placeholder="Suchen: Name, Spindnummer oder Raum …" autocomplete="off">
         <select id="filter">
           <option value="alle">Alle</option>
-          <option value="offen">Noch nicht unterschrieben</option>
-          <option value="fertig">Unterschrieben</option>
+          <option value="offen">Nur offene</option>
+          <option value="fertig">Nur erledigte</option>
         </select>
       </div>
       <div class="hint" id="trefferInfo"></div>
@@ -167,10 +175,8 @@
     <div class="hint" id="speicherHinweis"></div>
     <div id="status"></div>
     <div class="actions" style="margin-top:14px">
-      <button class="sec" id="sigOrdner" type="button" hidden>Speicherort für unterschriebene PDFs festlegen</button>
       <button class="sec" id="sigLoeschen" type="button">Gespeicherte Unterschriften löschen</button>
     </div>
-    <div class="hint" id="sigOrdnerInfo"></div>
     <div class="preview-wrap" id="vorschauWrap" hidden><div id="vorschau"></div></div>
   </div>
 </div>
@@ -396,16 +402,18 @@
     var ohneSpind = mitarbeiter.filter(function (m) { return !m.spind; }).length;
     var raeume = {}; mitarbeiter.forEach(function (m) { if (m.raum) raeume[m.ordner] = 1; });
     var anzRaeume = mitRaum ? Object.keys(raeume).length : 0;
-    var html = '<div class="actions"><span><b>' + mitarbeiter.length + "</b> Mitarbeiter gefunden" + (anzRaeume ? " in <b>" + anzRaeume + "</b> " + (anzRaeume === 1 ? "Raum" : "Räumen") : "") + ", davon <b>" + unterschrieben + "</b> unterschrieben.</span>" +
+    var html = '<div class="actions"><span><b>' + mitarbeiter.length + "</b> Mitarbeiter gefunden" + (anzRaeume ? " in <b>" + anzRaeume + "</b> " + (anzRaeume === 1 ? "Raum" : "Räumen") : "") + ", davon <b>" + unterschrieben + "</b> erledigt, <b>" + (mitarbeiter.length - unterschrieben) + "</b> offen.</span>" +
       '<button class="sec" type="button" id="alle">Alle auswählen</button><button class="sec" type="button" id="keine">Keine</button></div>' +
       (ohneSpind ? '<div class="warn">' + ohneSpind + " Mitarbeiter ohne Spindnummer. Dort bleibt die Nummer zum Ausfüllen frei.</div>" : "") +
-      '<div class="list-wrap"><table><thead><tr><th class="x">✓</th><th>Nachname, Vorname</th><th>Spind</th>' + (mitRaum ? "<th>Raum</th>" : "") + '<th>Ordner / Dateiname</th><th>Unterschrift</th><th></th></tr></thead><tbody>';
+      '<div class="list-wrap"><table><thead><tr><th class="x" title="Auswahl für die Sammel-Knöpfe unten (Ordner/ZIP/Drucken)">Auswahl</th><th>Nachname, Vorname</th><th>Spind</th>' + (mitRaum ? "<th>Raum</th>" : "") + '<th>Ordner / Dateiname</th><th>Status</th><th></th></tr></thead><tbody>';
     mitarbeiter.forEach(function (m, i) {
-      html += '<tr><td class="x"><input type="checkbox" data-i="' + i + '"' + (m.an ? " checked" : "") + "></td><td>" +
+      html += '<tr' + (m.sig ? ' class="erledigt"' : "") + '><td class="x"><input type="checkbox" data-i="' + i + '"' + (m.an ? " checked" : "") + "></td><td>" +
         esc([m.nach, m.vor].filter(Boolean).join(", ")) + "</td><td>" + (m.spind ? esc(m.spind) : '<span class="hint">–</span>') + "</td>" +
         (mitRaum ? "<td>" + (m.raum ? esc(m.raum) : '<span class="hint">–</span>') + "</td>" : "") + '<td class="datei">' +
         (m.ordner ? "<b>" + esc(m.ordner) + "</b>/" : "") + esc(m.datei) + "</td><td>" +
-        (m.sig ? '<span class="sig-ok"><b>✔</b> ' + esc(m.sig.datum) + "</span>" : '<span class="hint">offen</span>') +
+        (m.sig ? '<span class="badge-ok"><i>✔</i>Erledigt</span><div class="sig-info">' + esc(m.sig.datum) +
+          (m.sig.gespeichert ? " · " + esc(m.sig.gespeichert) : "") + "</div>"
+               : '<span class="badge-offen">offen</span>') +
         '</td><td class="akt"><button class="' + (m.sig ? "mini" : "sign") + '" type="button" data-sign="' + i + '">' +
         (m.sig ? "Neu unterschreiben" : "Unterschreiben") + '</button><button class="mini" type="button" data-pdf="' + i + '">PDF</button></td></tr>';
     });
@@ -690,9 +698,13 @@
     m.sig = { bild: bild.bild, b: bild.b, h: bild.h, ort: $("ort").value.trim(), datum: heute(), zeit: new Date().toISOString() };
     await dbSet(sigSchluessel(m), m.sig);
     schliesseUnterschrift();
+    // PDF sofort fertigstellen: in den festgelegten Speicherort, sonst als Download
+    var ort = await speichereInSigOrdner(m);
+    if (ort) { m.sig.gespeichert = "PDF gespeichert"; }
+    else { herunterladen(erstellePdf(m).output("blob"), m.datei); m.sig.gespeichert = "PDF heruntergeladen"; ort = "Download-Ordner/" + m.datei; }
+    await dbSet(sigSchluessel(m), m.sig);
     zeigeListe(); zeichneVorschau();
-    var gespeichert = await speichereInSigOrdner(m);
-    status(m.name + " hat unterschrieben." + (gespeichert ? " PDF gespeichert unter " + gespeichert + "." : ""));
+    status("✔ " + m.name + " ist erledigt. PDF: " + ort);
     $("suche").value = ""; wendeFilterAn(); $("suche").focus();
   };
 
@@ -703,9 +715,11 @@
     dbGet("sigOrdner").then(function (h) { if (h) { sigOrdner = h; zeigeSigOrdner(); } });
   }
   function zeigeSigOrdner() {
-    $("sigOrdnerInfo").textContent = sigOrdner
-      ? "Unterschriebene PDFs werden sofort im Ordner „" + sigOrdner.name + "“ gespeichert" + (mitRaum ? " (Unterordner je Raum)." : ".")
-      : "Unterschriften werden in diesem Browser gespeichert. Die PDFs erstellen Sie dann mit den Knöpfen oben.";
+    $("sigOrdnerInfo").innerHTML = sigOrdner
+      ? "Nach jeder Unterschrift wird die PDF sofort im Ordner <b>„" + esc(sigOrdner.name) + "“</b> gespeichert" + (mitRaum ? " (Unterordner je Raum)." : ".")
+      : "Nach jeder Unterschrift wird die PDF sofort <b>heruntergeladen</b> (Download-Ordner)." +
+        (ordnerMoeglich ? " Tipp: Speicherort festlegen, dann landen die PDFs direkt im richtigen Raum-Ordner." : "");
+    $("sigOrdner").textContent = sigOrdner ? "Speicherort ändern" : "Speicherort festlegen";
   }
   zeigeSigOrdner();
   $("sigOrdner").onclick = async function () {
