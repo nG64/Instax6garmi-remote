@@ -96,11 +96,25 @@
   .seite .unterschrift img.sig { position: absolute; left: 0; bottom: 100%; max-width: 100%; max-height: 21mm; }
   .seite .unterschrift .ortdatum { position: absolute; left: 0; bottom: 100%; font-size: 11pt; padding-bottom: 1mm; }
 
+  /* Dialog „Mitarbeiter hinzufügen“ */
+  .modal { position: fixed; inset: 0; background: rgba(20,24,32,.55); z-index: 20; display: flex; align-items: flex-start; justify-content: center; overflow: auto; padding: 24px 12px; }
+  .modal[hidden] { display: none; }
+  .modal-karte { background: var(--card); border-radius: 12px; width: 100%; max-width: 560px; padding: 20px; box-shadow: 0 10px 40px rgba(0,0,0,.3); }
+  .modal-karte h2 { margin: 0 0 6px; font-size: 20px; }
+  .modal-karte input { font-size: 17px; padding: 10px 12px; }
+  .spind-zeile { display: flex; gap: 8px; }
+  .spind-zeile input { flex: 1; }
+  .spind-zeile button { white-space: nowrap; font-size: 14px; padding: 8px 12px; }
+  .modal-aktionen { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+  .tag-hand { display: inline-block; font-size: 11px; color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 0 5px; margin-left: 6px; vertical-align: 1px; }
+  details.einst { margin-top: 14px; font-size: 14px; }
+  details.einst summary { cursor: pointer; color: var(--muted); }
+
   #druck { display: none; }
   @page { size: A4; margin: 0; }
   @media print {
     body { background: #fff; }
-    .app, .overlay { display: none !important; }
+    .app, .overlay, .modal { display: none !important; }
     #druck { display: block; }
     #druck .seite { page-break-after: always; break-after: page; }
     #druck .seite:last-child { page-break-after: auto; break-after: auto; }
@@ -129,6 +143,9 @@
 
   <div class="card">
     <h2><span class="num">2</span> Unterschreiben und PDFs erstellen</h2>
+    <div class="actions" style="margin-bottom:12px">
+      <button class="sec" id="neuMa" type="button">+ Mitarbeiter von Hand hinzufügen</button>
+    </div>
     <div id="sucheBereich" hidden>
       <div class="speicherort">
         <span id="sigOrdnerInfo"></span>
@@ -171,6 +188,37 @@
     <div class="pad-aktionen">
       <button class="sec" id="padLoeschen" type="button">Unterschrift löschen</button>
       <button id="padOk" type="button">Unterschrift übernehmen</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="neuDialog" hidden role="dialog" aria-modal="true" aria-labelledby="neuTitel">
+  <div class="modal-karte">
+    <h2 id="neuTitel">Mitarbeiter hinzufügen</h2>
+    <div class="hint">Für Mitarbeiter, die in der Excel-Liste fehlen. Der Eintrag bleibt auf diesem Gerät gespeichert.</div>
+    <div class="row">
+      <div><label for="neuVor">Vorname</label><input type="text" id="neuVor" autocomplete="off" autocapitalize="words"></div>
+      <div><label for="neuNach">Nachname</label><input type="text" id="neuNach" autocomplete="off" autocapitalize="words"></div>
+    </div>
+    <label for="neuRaum">Raum</label>
+    <input type="text" id="neuRaum" list="raumListe" autocomplete="off" placeholder="z. B. 1.23">
+    <datalist id="raumListe"></datalist>
+    <label for="neuSpind">Spindnummer</label>
+    <div class="spind-zeile">
+      <input type="text" id="neuSpind" inputmode="numeric" autocomplete="off">
+      <button class="sec" id="neuWuerfeln" type="button">Andere Nummer</button>
+    </div>
+    <div class="hint" id="neuSpindInfo"></div>
+    <details class="einst" id="einstMax">
+      <summary>Höchste Spindnummer: <b id="maxAnzeige"></b></summary>
+      <label for="maxSpind">Höchste vorhandene Spindnummer (für Vorschläge)</label>
+      <input type="number" id="maxSpind" min="1" inputmode="numeric" placeholder="z. B. 250">
+    </details>
+    <div id="neuFehler"></div>
+    <div class="modal-aktionen">
+      <button class="sec" id="neuAbbrechen" type="button">Abbrechen</button>
+      <button class="sec" id="neuNurSpeichern" type="button">Nur hinzufügen</button>
+      <button id="neuUnterschreiben" type="button">Hinzufügen und unterschreiben</button>
     </div>
   </div>
 </div>
@@ -310,28 +358,47 @@
           if (name) liste.push({ name: name, vor: vor, nach: nach, spind: (z[iSpind] || "").replace(/\.0$/, ""),
             raum: iRaum >= 0 ? (z[iRaum] || "").replace(/\.0$/, "") : "", an: true });
         });
-        var sortierer = new Intl.Collator("de", { numeric: true, sensitivity: "base" });
-        liste.sort(function (a, b) { return (!a.raum - !b.raum) || sortierer.compare(a.raum, b.raum) ||
-          sortierer.compare(a.nach, b.nach) || sortierer.compare(a.vor, b.vor); });
         return { ok: true, liste: liste, kopf: zeilen[zi], mitRaum: iRaum >= 0 };
       }
     }
     return { ok: false, kopf: zeilen[0] || [] };
   }
 
+  var sortierer = new Intl.Collator("de", { numeric: true, sensitivity: "base" });
+  function sortiere(liste) {
+    liste.sort(function (a, b) { return (!a.raum - !b.raum) || sortierer.compare(a.raum, b.raum) ||
+      sortierer.compare(a.nach, b.nach) || sortierer.compare(a.vor, b.vor); });
+  }
+
+  // Excel-Liste + von Hand ergänzte Mitarbeiter zusammenführen
+  var excelListe = [], excelMitRaum = false, manuelle = [];
+  function nameSchluessel(m) { return (m.nach + "|" + m.vor).toLowerCase().replace(/\s+/g, " ").trim(); }
+  function gesamtliste() {
+    var inExcel = {};
+    excelListe.forEach(function (m) { inExcel[nameSchluessel(m)] = 1; });
+    var hand = manuelle.filter(function (h) { return !inExcel[nameSchluessel(h)]; }).map(function (h) {
+      return { name: [h.vor, h.nach].filter(Boolean).join(" "), vor: h.vor, nach: h.nach, spind: h.spind || "", raum: h.raum || "", an: true, manuell: true, id: h.id };
+    });
+    mitarbeiter = excelListe.map(function (m) { var k = Object.assign({}, m); k.an = true; return k; }).concat(hand);
+    mitRaum = excelMitRaum || hand.some(function (m) { return m.raum; });
+    sortiere(mitarbeiter);
+    vergibDateinamen(); zeigeListe(); zeichneVorschau();
+    return ladeUnterschriften().then(function () { zeigeListe(); zeichneVorschau(); });
+  }
+  dbGet("manuell").then(function (v) { manuelle = v || []; if (manuelle.length) gesamtliste(); });
+
   function blattUebernehmen() {
     var e = werteAus($("blatt").value);
+    excelListe = []; excelMitRaum = false;
     if (!e.ok) {
-      mitarbeiter = [];
       fehler("In diesem Tabellenblatt wurden keine Spalten „Name“ (bzw. „Vorname“/„Nachname“) und „Spindnummer“ gefunden. " +
         "Gefundene Überschriften: " + (e.kopf.join(", ") || "(keine)"));
     } else {
-      fehler(""); mitarbeiter = e.liste; mitRaum = e.mitRaum;
-      if (!mitarbeiter.length) fehler("Die Liste enthält keine Mitarbeiter.");
-      else if (!mitRaum) fehler("Hinweis: Keine Spalte „Raum“ gefunden – die PDFs werden nicht in Raum-Ordner sortiert.");
+      fehler(""); excelListe = e.liste; excelMitRaum = e.mitRaum;
+      if (!excelListe.length) fehler("Die Liste enthält keine Mitarbeiter.");
+      else if (!excelMitRaum) fehler("Hinweis: Keine Spalte „Raum“ gefunden – die PDFs werden nicht in Raum-Ordner sortiert.");
     }
-    vergibDateinamen(); zeigeListe(); zeichneVorschau();
-    ladeUnterschriften().then(function () { zeigeListe(); zeichneVorschau(); });
+    gesamtliste();
   }
 
   // ---------- Dateinamen ----------
@@ -367,28 +434,40 @@
   function zeigeListe() {
     $("sucheBereich").hidden = !mitarbeiter.length;
     if (!mitarbeiter.length) { $("liste").innerHTML = '<p class="hint">Noch keine Liste geladen.</p>'; aktualisiereKnoepfe(); return; }
+    var anzHand = mitarbeiter.filter(function (m) { return m.manuell; }).length;
     var unterschrieben = mitarbeiter.filter(function (m) { return m.sig; }).length;
     var ohneSpind = mitarbeiter.filter(function (m) { return !m.spind; }).length;
     var raeume = {}; mitarbeiter.forEach(function (m) { if (m.raum) raeume[m.ordner] = 1; });
     var anzRaeume = mitRaum ? Object.keys(raeume).length : 0;
-    var html = '<div class="actions"><span><b>' + mitarbeiter.length + "</b> Mitarbeiter gefunden" + (anzRaeume ? " in <b>" + anzRaeume + "</b> " + (anzRaeume === 1 ? "Raum" : "Räumen") : "") + ", davon <b>" + unterschrieben + "</b> erledigt, <b>" + (mitarbeiter.length - unterschrieben) + "</b> offen.</span>" +
+    var html = '<div class="actions"><span><b>' + mitarbeiter.length + "</b> Mitarbeiter gefunden" + (anzRaeume ? " in <b>" + anzRaeume + "</b> " + (anzRaeume === 1 ? "Raum" : "Räumen") : "") + ", davon <b>" + unterschrieben + "</b> erledigt, <b>" + (mitarbeiter.length - unterschrieben) + "</b> offen" + (anzHand ? " (" + anzHand + " von Hand ergänzt)" : "") + ".</span>" +
       '<button class="sec" type="button" id="alle">Alle auswählen</button><button class="sec" type="button" id="keine">Keine</button></div>' +
       (ohneSpind ? '<div class="warn">' + ohneSpind + " Mitarbeiter ohne Spindnummer. Dort bleibt die Nummer zum Ausfüllen frei.</div>" : "") +
       '<div class="list-wrap"><table><thead><tr><th class="x" title="Auswahl für die Sammel-Knöpfe unten (Ordner/ZIP/Drucken)">Auswahl</th><th>Nachname, Vorname</th><th>Spind</th>' + (mitRaum ? "<th>Raum</th>" : "") + '<th>Ordner / Dateiname</th><th>Status</th><th></th></tr></thead><tbody>';
     mitarbeiter.forEach(function (m, i) {
       html += '<tr' + (m.sig ? ' class="erledigt"' : "") + '><td class="x"><input type="checkbox" data-i="' + i + '"' + (m.an ? " checked" : "") + "></td><td>" +
-        esc([m.nach, m.vor].filter(Boolean).join(", ")) + "</td><td>" + (m.spind ? esc(m.spind) : '<span class="hint">–</span>') + "</td>" +
+        esc([m.nach, m.vor].filter(Boolean).join(", ")) + (m.manuell ? '<span class="tag-hand">von Hand</span>' : "") + "</td><td>" + (m.spind ? esc(m.spind) : '<span class="hint">–</span>') + "</td>" +
         (mitRaum ? "<td>" + (m.raum ? esc(m.raum) : '<span class="hint">–</span>') + "</td>" : "") + '<td class="datei">' +
         (m.ordner ? "<b>" + esc(m.ordner) + "</b>/" : "") + esc(m.datei) + "</td><td>" +
         (m.sig ? '<span class="badge-ok"><i>✔</i>Erledigt</span><div class="sig-info">' + esc(m.sig.datum) +
           (m.sig.gespeichert ? " · " + esc(m.sig.gespeichert) : "") + "</div>"
                : '<span class="badge-offen">offen</span>') +
         '</td><td class="akt"><button class="' + (m.sig ? "mini" : "sign") + '" type="button" data-sign="' + i + '">' +
-        (m.sig ? "Neu unterschreiben" : "Unterschreiben") + '</button><button class="mini" type="button" data-pdf="' + i + '">PDF</button></td></tr>';
+        (m.sig ? "Neu unterschreiben" : "Unterschreiben") + '</button><button class="mini" type="button" data-pdf="' + i + '">PDF</button>' +
+        (m.manuell ? '<button class="mini" type="button" data-weg="' + i + '" title="Von Hand ergänzten Mitarbeiter entfernen">✕</button>' : "") + "</td></tr>";
     });
     $("liste").innerHTML = html + "</tbody></table></div>";
     $("liste").querySelectorAll("input[type=checkbox]").forEach(function (cb) {
       cb.onchange = function () { mitarbeiter[+cb.dataset.i].an = cb.checked; aktualisiereKnoepfe(); };
+    });
+    $("liste").querySelectorAll("button[data-weg]").forEach(function (b) {
+      b.onclick = async function () {
+        var m = mitarbeiter[+b.dataset.weg];
+        if (!confirm(m.name + " aus der Liste entfernen?" + (m.sig ? "\n\nDie Unterschrift wird ebenfalls gelöscht. Bereits gespeicherte PDFs bleiben erhalten." : ""))) return;
+        manuelle = manuelle.filter(function (h) { return h.id !== m.id; });
+        await dbSet("manuell", manuelle);
+        if (m.sig) await dbDel(sigSchluessel(m));
+        gesamtliste(); status(m.name + " wurde entfernt.");
+      };
     });
     $("liste").querySelectorAll("button[data-sign]").forEach(function (b) {
       b.onclick = function () { oeffneUnterschrift(mitarbeiter[+b.dataset.sign]); };
@@ -606,6 +685,94 @@
   }
   window.addEventListener("resize", skaliere);
 
+  // ---------- Mitarbeiter von Hand hinzufügen ----------
+  function maxSpind() { var n = parseInt(laden2("maxSpind"), 10); return n > 0 ? n : 0; }
+  function laden2(k) { try { return localStorage.getItem("schluessel." + k) || ""; } catch (e) { return ""; } }
+  function speichern2(k, v) { try { localStorage.setItem("schluessel." + k, v); } catch (e) {} }
+  function reineNummer(t) { t = String(t || "").trim(); return /^\d+$/.test(t) ? parseInt(t, 10) : null; }
+  function belegteNummern() {
+    var b = {};
+    mitarbeiter.forEach(function (m) { var n = reineNummer(m.spind); if (n !== null) b[n] = m.name; });
+    return b;
+  }
+  function obergrenze(belegt) {
+    var max = maxSpind();
+    if (max) return max;
+    var hoechste = Object.keys(belegt).reduce(function (a, n) { return Math.max(a, +n); }, 0);
+    return Math.max(hoechste + 20, 50);
+  }
+  // Zufällige freie Nummer, möglichst nah an den Spinden im selben Raum (sonst nah an allen belegten)
+  function spindVorschlag(raum, ausser) {
+    var belegt = belegteNummern(), grenze = obergrenze(belegt), frei = [];
+    for (var n = 1; n <= grenze; n++) if (!belegt[n] && n !== ausser) frei.push(n);
+    if (!frei.length) return { nr: null, text: "Keine freie Nummer bis " + grenze + " gefunden." };
+    var r = String(raum || "").trim().toLowerCase();
+    var anker = mitarbeiter.filter(function (m) { return r && String(m.raum).trim().toLowerCase() === r; })
+      .map(function (m) { return reineNummer(m.spind); }).filter(function (n) { return n !== null; });
+    var imRaum = anker.length > 0;
+    if (!imRaum) anker = Object.keys(belegt).map(Number);
+    var kandidaten = frei;
+    if (anker.length) {
+      var abstand = function (n) { return anker.reduce(function (a, x) { return Math.min(a, Math.abs(n - x)); }, Infinity); };
+      var min = frei.reduce(function (a, n) { return Math.min(a, abstand(n)); }, Infinity);
+      kandidaten = frei.filter(function (n) { return abstand(n) <= min + 2; });
+    }
+    var nr = kandidaten[Math.floor(Math.random() * kandidaten.length)];
+    return { nr: nr, text: "Vorschlag: freie Nummer " + (imRaum ? "nah an den Spinden in Raum " + raum.trim() : (anker.length ? "nah an den vergebenen Spinden" : "")) +
+      " (" + frei.length + " frei bis " + grenze + (maxSpind() ? "" : ", höchste Spindnummer noch nicht festgelegt") + ")." };
+  }
+  function neuFehler(t) { $("neuFehler").innerHTML = t ? '<div class="warn">' + esc(t) + "</div>" : ""; }
+  var letzterVorschlag = "";
+  function wuerfeln(nurWennVorschlag) {
+    // Eine von Hand eingetippte Nummer wird bei Raumwechsel nicht überschrieben
+    var akt = $("neuSpind").value.trim();
+    if (nurWennVorschlag === true && akt && akt !== letzterVorschlag) return;
+    var v = spindVorschlag($("neuRaum").value, reineNummer(akt));
+    if (v.nr !== null) { $("neuSpind").value = v.nr; letzterVorschlag = String(v.nr); }
+    $("neuSpindInfo").textContent = v.text;
+  }
+  function zeigeMax() { $("maxAnzeige").textContent = maxSpind() || "noch nicht festgelegt"; $("maxSpind").value = maxSpind() || ""; }
+  $("neuMa").onclick = function () {
+    ["neuVor", "neuNach", "neuRaum", "neuSpind"].forEach(function (id) { $(id).value = ""; });
+    var raeume = {}; mitarbeiter.forEach(function (m) { if (m.raum) raeume[m.raum] = 1; });
+    $("raumListe").innerHTML = Object.keys(raeume).sort(sortierer.compare).map(function (r) { return '<option value="' + esc(r) + '">'; }).join("");
+    neuFehler(""); zeigeMax(); letzterVorschlag = ""; wuerfeln();
+    $("neuDialog").hidden = false; $("neuVor").focus();
+  };
+  $("neuWuerfeln").onclick = function () { wuerfeln(); };
+  $("neuRaum").addEventListener("change", function () { wuerfeln(true); });   // neuer Raum → Vorschlag in dessen Nähe
+  $("maxSpind").addEventListener("change", function () {
+    var n = parseInt($("maxSpind").value, 10);
+    speichern2("maxSpind", n > 0 ? String(n) : ""); zeigeMax(); wuerfeln(true);
+  });
+  $("neuAbbrechen").onclick = function () { $("neuDialog").hidden = true; };
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !$("neuDialog").hidden) $("neuDialog").hidden = true; });
+
+  async function neuSpeichern(direktUnterschreiben) {
+    var vor = $("neuVor").value.trim(), nach = $("neuNach").value.trim(), raum = $("neuRaum").value.trim(), spind = $("neuSpind").value.trim();
+    if (!vor || !nach) { neuFehler("Bitte Vor- und Nachname eintragen."); return; }
+    var dopp = mitarbeiter.find(function (m) { return nameSchluessel(m) === (nach + "|" + vor).toLowerCase().replace(/\s+/g, " "); });
+    if (dopp) { neuFehler(dopp.name + " steht bereits in der Liste" + (dopp.spind ? " (Spind " + dopp.spind + ")" : "") + "."); return; }
+    if (spind) {
+      var besetzt = mitarbeiter.find(function (m) { return String(m.spind).trim().toLowerCase() === spind.toLowerCase(); });
+      if (besetzt) { neuFehler("Spind " + spind + " ist bereits an " + besetzt.name + " vergeben."); return; }
+      var n = reineNummer(spind);
+      if (n !== null && maxSpind() && n > maxSpind()) { neuFehler("Spind " + spind + " liegt über der höchsten Spindnummer (" + maxSpind() + ")."); return; }
+    }
+    var eintrag = { id: "h" + Date.now() + Math.random().toString(36).slice(2, 6), vor: vor, nach: nach, raum: raum, spind: spind, zeit: new Date().toISOString() };
+    manuelle.push(eintrag);
+    await dbSet("manuell", manuelle);
+    $("neuDialog").hidden = true;
+    await gesamtliste();
+    status("✔ " + vor + " " + nach + " wurde hinzugefügt" + (spind ? " (Spind " + spind + ")" : "") + ".");
+    if (direktUnterschreiben) {
+      var m = mitarbeiter.find(function (x) { return x.id === eintrag.id; });
+      if (m) oeffneUnterschrift(m);
+    }
+  }
+  $("neuNurSpeichern").onclick = function () { neuSpeichern(false); };
+  $("neuUnterschreiben").onclick = function () { neuSpeichern(true); };
+
   // ---------- Unterschrift per Touch ----------
   var pad = $("pad"), ctx = pad.getContext("2d"), aktuell = null, leer = true, zeichnet = false, punkte = [];
   function heute() { return new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }); }
@@ -671,7 +838,11 @@
     $("overlay").hidden = true; document.body.style.overflow = ""; aktuell = null;
   }
   $("ovAbbrechen").onclick = schliesseUnterschrift;
-  window.appZurueck = function () { if (!$("overlay").hidden) { schliesseUnterschrift(); return true; } return false; };
+  window.appZurueck = function () {
+    if (!$("overlay").hidden) { schliesseUnterschrift(); return true; }
+    if (!$("neuDialog").hidden) { $("neuDialog").hidden = true; return true; }
+    return false;
+  };
   window.addEventListener("resize", function () { if (!$("overlay").hidden && leer) padGroesse(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !$("overlay").hidden) schliesseUnterschrift(); });
 
