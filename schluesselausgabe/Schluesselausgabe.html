@@ -61,11 +61,42 @@
   .seite .unterschrift { position: absolute; left: 25mm; right: 25mm; top: 247mm; display: flex; gap: 15mm; }
   .seite .unterschrift div { flex: 1; border-top: 0.3mm solid #000; padding-top: 1.5mm; font-size: 9pt; }
 
+  /* Suche */
+  .suche-zeile { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
+  .suche-zeile input { flex: 1; min-width: 220px; font-size: 16px; padding: 10px 12px; }
+  .suche-zeile select { width: auto; }
+  tr[hidden] { display: none; }
+  .sig-ok { color: var(--ok); font-size: 12px; white-space: nowrap; }
+  .sig-ok b { font-size: 14px; }
+  button.sign { font-size: 13px; padding: 7px 12px; }
+  td.akt { white-space: nowrap; text-align: right; }
+  td.akt button + button { margin-left: 6px; }
+
+  /* Unterschrift-Fenster */
+  .overlay { position: fixed; inset: 0; background: #fff; z-index: 10; display: flex; flex-direction: column; }
+  .overlay[hidden] { display: none; }
+  .ov-kopf { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+  .ov-kopf h2 { font-size: 18px; margin: 0; }
+  .ov-doc { flex: 1; overflow: auto; background: #8a8f98; padding: 16px; min-height: 120px; }
+  .ov-doc .seite { margin: 0 auto; box-shadow: 0 2px 10px rgba(0,0,0,.3); transform-origin: top center; }
+  .ov-pad { border-top: 1px solid var(--line); padding: 12px 16px 16px; background: var(--bg); }
+  .pad-wrap { position: relative; max-width: 900px; margin: 0 auto; }
+  #pad { width: 100%; height: 210px; background: #fff; border: 2px solid var(--accent); border-radius: 8px; touch-action: none; display: block; cursor: crosshair; }
+  .pad-linie { position: absolute; left: 6%; right: 6%; bottom: 48px; border-bottom: 1.5px dashed #9aa3ad; pointer-events: none; }
+  .pad-x { position: absolute; left: 6%; bottom: 52px; color: #9aa3ad; font-size: 26px; pointer-events: none; }
+  .pad-hinweis { text-align: center; font-size: 14px; color: var(--muted); margin: 0 0 8px; }
+  .pad-aktionen { display: flex; justify-content: space-between; gap: 12px; max-width: 900px; margin: 12px auto 0; }
+
+  /* Unterschrift auf der Seite */
+  .seite .unterschrift div { position: relative; }
+  .seite .unterschrift img.sig { position: absolute; left: 0; bottom: 100%; max-width: 100%; max-height: 21mm; }
+  .seite .unterschrift .ortdatum { position: absolute; left: 0; bottom: 100%; font-size: 11pt; padding-bottom: 1mm; }
+
   #druck { display: none; }
   @page { size: A4; margin: 0; }
   @media print {
     body { background: #fff; }
-    .app { display: none; }
+    .app, .overlay { display: none !important; }
     #druck { display: block; }
     #druck .seite { page-break-after: always; break-after: page; }
     #druck .seite:last-child { page-break-after: auto; break-after: auto; }
@@ -104,6 +135,8 @@
         <input type="text" id="datum">
       </div>
     </div>
+    <label for="ort">Ort (wird bei der Unterschrift als „Ort, Datum“ eingetragen)</label>
+    <input type="text" id="ort">
     <label for="titel">Überschrift</label>
     <input type="text" id="titel">
     <label for="text">Text</label>
@@ -113,7 +146,18 @@
   </div>
 
   <div class="card">
-    <h2><span class="num">3</span> PDFs erstellen</h2>
+    <h2><span class="num">3</span> Unterschreiben und PDFs erstellen</h2>
+    <div id="sucheBereich" hidden>
+      <div class="suche-zeile">
+        <input type="search" id="suche" placeholder="Suchen: Name, Spindnummer oder Raum …" autocomplete="off">
+        <select id="filter">
+          <option value="alle">Alle</option>
+          <option value="offen">Noch nicht unterschrieben</option>
+          <option value="fertig">Unterschrieben</option>
+        </select>
+      </div>
+      <div class="hint" id="trefferInfo"></div>
+    </div>
     <div id="liste"><p class="hint">Noch keine Liste geladen.</p></div>
     <div class="actions" style="margin-top:16px">
       <button id="ordner" disabled hidden>PDFs in Ordner speichern</button>
@@ -122,7 +166,28 @@
     </div>
     <div class="hint" id="speicherHinweis"></div>
     <div id="status"></div>
+    <div class="actions" style="margin-top:14px">
+      <button class="sec" id="sigOrdner" type="button" hidden>Speicherort für unterschriebene PDFs festlegen</button>
+      <button class="sec" id="sigLoeschen" type="button">Gespeicherte Unterschriften löschen</button>
+    </div>
+    <div class="hint" id="sigOrdnerInfo"></div>
     <div class="preview-wrap" id="vorschauWrap" hidden><div id="vorschau"></div></div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="ovTitel">
+  <div class="ov-kopf">
+    <h2 id="ovTitel"></h2>
+    <button class="sec" id="ovAbbrechen" type="button">Abbrechen</button>
+  </div>
+  <div class="ov-doc" id="ovDoc"></div>
+  <div class="ov-pad">
+    <p class="pad-hinweis">Bitte das Dokument lesen und hier mit dem Finger oder Stift unterschreiben:</p>
+    <div class="pad-wrap"><canvas id="pad"></canvas><div class="pad-linie"></div><div class="pad-x">✕</div></div>
+    <div class="pad-aktionen">
+      <button class="sec" id="padLoeschen" type="button">Unterschrift löschen</button>
+      <button id="padOk" type="button">Unterschrift übernehmen</button>
+    </div>
   </div>
 </div>
 
@@ -588,6 +653,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   function laden(k, d) { try { var v = localStorage.getItem("schluessel." + k); return v == null ? d : v; } catch (e) { return d; } }
   function speichern(k, v) { try { localStorage.setItem("schluessel." + k, v); } catch (e) {} }
   $("firma").value = laden("firma", "");
+  $("ort").value = laden("ort", "Bochum");
+  $("ort").addEventListener("input", function () { speichern("ort", $("ort").value); });
   $("titel").value = laden("titel", STANDARD.titel);
   $("text").value = laden("text3", STANDARD.text);
   $("datum").value = new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -599,6 +666,37 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     $("titel").value = STANDARD.titel; $("text").value = STANDARD.text;
     speichern("titel", STANDARD.titel); speichern("text3", STANDARD.text); zeichneVorschau();
   };
+
+  // ---------- Gespeicherte Unterschriften (IndexedDB, bleibt nach Neuladen erhalten) ----------
+  var dbP = new Promise(function (res) {
+    try {
+      var q = indexedDB.open("schluesselausgabe", 1);
+      q.onupgradeneeded = function () { q.result.createObjectStore("daten"); };
+      q.onsuccess = function () { res(q.result); };
+      q.onerror = function () { res(null); };
+    } catch (e) { res(null); }
+  });
+  function dbAktion(modus, fn) {
+    return dbP.then(function (db) {
+      if (!db) return undefined;
+      return new Promise(function (res) {
+        try {
+          var st = db.transaction("daten", modus).objectStore("daten"), q = fn(st);
+          q.onsuccess = function () { res(q.result); }; q.onerror = function () { res(undefined); };
+        } catch (e) { res(undefined); }
+      });
+    });
+  }
+  function dbGet(k) { return dbAktion("readonly", function (st) { return st.get(k); }); }
+  function dbSet(k, v) { return dbAktion("readwrite", function (st) { return st.put(v, k); }); }
+  function dbDel(k) { return dbAktion("readwrite", function (st) { return st.delete(k); }); }
+  function dbKeys() { return dbAktion("readonly", function (st) { return st.getAllKeys(); }); }
+  function sigSchluessel(m) { return "sig:" + [m.nach, m.vor, m.spind, m.raum].join("|").toLowerCase(); }
+  function ladeUnterschriften() {
+    return Promise.all(mitarbeiter.map(function (m) {
+      return dbGet(sigSchluessel(m)).then(function (v) { m.sig = v || null; });
+    }));
+  }
 
   // ---------- Datei laden ----------
   var drop = $("drop");
@@ -690,6 +788,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       else if (!mitRaum) fehler("Hinweis: Keine Spalte „Raum“ gefunden – die PDFs werden nicht in Raum-Ordner sortiert.");
     }
     vergibDateinamen(); zeigeListe(); zeichneVorschau();
+    ladeUnterschriften().then(function () { zeigeListe(); zeichneVorschau(); });
   }
 
   // ---------- Dateinamen ----------
@@ -723,31 +822,61 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   // ---------- Liste ----------
   function zeigeListe() {
+    $("sucheBereich").hidden = !mitarbeiter.length;
     if (!mitarbeiter.length) { $("liste").innerHTML = '<p class="hint">Noch keine Liste geladen.</p>'; aktualisiereKnoepfe(); return; }
+    var unterschrieben = mitarbeiter.filter(function (m) { return m.sig; }).length;
     var ohneSpind = mitarbeiter.filter(function (m) { return !m.spind; }).length;
     var raeume = {}; mitarbeiter.forEach(function (m) { if (m.raum) raeume[m.ordner] = 1; });
     var anzRaeume = mitRaum ? Object.keys(raeume).length : 0;
-    var html = '<div class="actions"><span><b>' + mitarbeiter.length + "</b> Mitarbeiter gefunden" + (anzRaeume ? " in <b>" + anzRaeume + "</b> " + (anzRaeume === 1 ? "Raum" : "Räumen") : "") + ".</span>" +
+    var html = '<div class="actions"><span><b>' + mitarbeiter.length + "</b> Mitarbeiter gefunden" + (anzRaeume ? " in <b>" + anzRaeume + "</b> " + (anzRaeume === 1 ? "Raum" : "Räumen") : "") + ", davon <b>" + unterschrieben + "</b> unterschrieben.</span>" +
       '<button class="sec" type="button" id="alle">Alle auswählen</button><button class="sec" type="button" id="keine">Keine</button></div>' +
       (ohneSpind ? '<div class="warn">' + ohneSpind + " Mitarbeiter ohne Spindnummer. Dort bleibt die Nummer zum Ausfüllen frei.</div>" : "") +
-      '<div class="list-wrap"><table><thead><tr><th class="x">✓</th><th>Nachname, Vorname</th><th>Spind</th>' + (mitRaum ? "<th>Raum</th>" : "") + '<th>Ordner / Dateiname</th><th></th></tr></thead><tbody>';
+      '<div class="list-wrap"><table><thead><tr><th class="x">✓</th><th>Nachname, Vorname</th><th>Spind</th>' + (mitRaum ? "<th>Raum</th>" : "") + '<th>Ordner / Dateiname</th><th>Unterschrift</th><th></th></tr></thead><tbody>';
     mitarbeiter.forEach(function (m, i) {
       html += '<tr><td class="x"><input type="checkbox" data-i="' + i + '"' + (m.an ? " checked" : "") + "></td><td>" +
         esc([m.nach, m.vor].filter(Boolean).join(", ")) + "</td><td>" + (m.spind ? esc(m.spind) : '<span class="hint">–</span>') + "</td>" +
         (mitRaum ? "<td>" + (m.raum ? esc(m.raum) : '<span class="hint">–</span>') + "</td>" : "") + '<td class="datei">' +
-        (m.ordner ? "<b>" + esc(m.ordner) + "</b>/" : "") + esc(m.datei) + '</td><td><button class="mini" type="button" data-pdf="' + i + '">PDF</button></td></tr>';
+        (m.ordner ? "<b>" + esc(m.ordner) + "</b>/" : "") + esc(m.datei) + "</td><td>" +
+        (m.sig ? '<span class="sig-ok"><b>✔</b> ' + esc(m.sig.datum) + "</span>" : '<span class="hint">offen</span>') +
+        '</td><td class="akt"><button class="' + (m.sig ? "mini" : "sign") + '" type="button" data-sign="' + i + '">' +
+        (m.sig ? "Neu unterschreiben" : "Unterschreiben") + '</button><button class="mini" type="button" data-pdf="' + i + '">PDF</button></td></tr>';
     });
     $("liste").innerHTML = html + "</tbody></table></div>";
     $("liste").querySelectorAll("input[type=checkbox]").forEach(function (cb) {
       cb.onchange = function () { mitarbeiter[+cb.dataset.i].an = cb.checked; aktualisiereKnoepfe(); };
+    });
+    $("liste").querySelectorAll("button[data-sign]").forEach(function (b) {
+      b.onclick = function () { oeffneUnterschrift(mitarbeiter[+b.dataset.sign]); };
     });
     $("liste").querySelectorAll("button[data-pdf]").forEach(function (b) {
       b.onclick = function () { var m = mitarbeiter[+b.dataset.pdf]; herunterladen(erstellePdf(m).output("blob"), m.datei); };
     });
     $("alle").onclick = function () { mitarbeiter.forEach(function (m) { m.an = true; }); zeigeListe(); };
     $("keine").onclick = function () { mitarbeiter.forEach(function (m) { m.an = false; }); zeigeListe(); };
+    wendeFilterAn();
     aktualisiereKnoepfe();
   }
+
+  // ---------- Suche ----------
+  function wendeFilterAn() {
+    var woerter = $("suche").value.toLowerCase().split(/\s+/).filter(Boolean), f = $("filter").value, n = 0;
+    $("liste").querySelectorAll("tbody tr").forEach(function (tr) {
+      var m = mitarbeiter[+tr.querySelector("[data-i]").dataset.i];
+      var heu = [m.nach, m.vor, m.name, m.spind, m.raum, m.ordner].join(" ").toLowerCase();
+      var ok = woerter.every(function (w) { return heu.indexOf(w) >= 0; }) &&
+        (f === "alle" || (f === "offen" ? !m.sig : !!m.sig));
+      tr.hidden = !ok; if (ok) n++;
+    });
+    $("trefferInfo").textContent = (woerter.length || f !== "alle") ? n + " von " + mitarbeiter.length + " Mitarbeitern angezeigt" : "";
+  }
+  $("suche").addEventListener("input", wendeFilterAn);
+  $("filter").addEventListener("change", wendeFilterAn);
+  $("suche").addEventListener("keydown", function (e) {
+    // Enter: ist genau ein Treffer übrig, direkt das Unterschriftsfenster öffnen
+    if (e.key !== "Enter") return;
+    var sichtbar = Array.prototype.filter.call($("liste").querySelectorAll("tbody tr"), function (tr) { return !tr.hidden; });
+    if (sichtbar.length === 1) oeffneUnterschrift(mitarbeiter[+sichtbar[0].querySelector("[data-i]").dataset.i]);
+  });
   function ausgewaehlt() { return mitarbeiter.filter(function (m) { return m.an; }); }
   function aktualisiereKnoepfe() {
     var n = ausgewaehlt().length, t = n === 1 ? "1 PDF" : n + " PDFs";
@@ -827,6 +956,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     doc.setFont("Sans", "normal"); doc.setFontSize(9);
     doc.text("Ort, Datum", L, 259);
     doc.text("Unterschrift " + m.name, R - feld, 259);
+    if (m.sig) {
+      doc.setFontSize(11);
+      doc.text([m.sig.ort, m.sig.datum].filter(Boolean).join(", "), L, 253);
+      var f = Math.min(feld / m.sig.b, 21 / m.sig.h), bw = m.sig.b * f, bh = m.sig.h * f;
+      doc.addImage(m.sig.bild, "PNG", R - feld, 254.5 - bh, bw, bh, undefined, "FAST");
+    }
     return doc;
   }
 
@@ -874,7 +1009,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   // ---------- Vorschau & Direktdruck ----------
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
-  function seite(m) {
+  function seite(m, ohneSig) {
     var firma = $("firma").value.trim() || "[Firmenname]";
     var text = esc($("text").value)
       .replace(/\{spind\}/g, "<b>" + esc(m.spind || "_______") + "</b>")
@@ -888,7 +1023,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       '<div class="daten"><div class="feld"><b>Mitarbeiter/in:</b><span>' + esc(m.name) + "</span></div>" +
       '<div class="feld"><b>Spindnummer:</b><span>' + esc(m.spind || "\u00a0") + "</span></div>" +
       (mitRaum ? '<div class="feld"><b>Raum:</b><span>' + esc(m.raum || "\u00a0") + "</span></div>" : "") + "</div>" +
-      '<div class="unterschrift"><div>Ort, Datum</div><div>Unterschrift ' + esc(m.name) + "</div></div>" +
+      '<div class="unterschrift"><div>' +
+      (m.sig && !ohneSig ? '<span class="ortdatum">' + esc([m.sig.ort, m.sig.datum].filter(Boolean).join(", ")) + "</span>" : "") +
+      "Ort, Datum</div><div>" + (m.sig && !ohneSig ? '<img class="sig" src="' + m.sig.bild + '" alt="">' : "") +
+      "Unterschrift " + esc(m.name) + "</div></div>" +
       "</div>";
   }
   function zeichneVorschau() {
@@ -898,15 +1036,135 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     $("vorschau").innerHTML = '<div class="hint" style="color:#fff;margin-bottom:8px;text-align:center">Vorschau: ' + esc((m.ordner ? m.ordner + "/" : "") + m.datei) + "</div>" + seite(m);
     skaliere();
   }
-  function skaliere() {
-    var s = $("vorschau").querySelector(".seite"); if (!s) return;
-    var verf = $("vorschauWrap").clientWidth - 40, breite = s.offsetWidth;
+  function skaliere() { skaliereIn($("vorschau"), $("vorschauWrap")); if (!$("overlay").hidden) skaliereIn($("ovDoc"), $("ovDoc")); }
+  function skaliereIn(innen, rahmen) {
+    var s = innen.querySelector(".seite"); if (!s) return;
+    var verf = rahmen.clientWidth - 32, breite = s.offsetWidth;
     var f = Math.min(1, verf / breite);
     s.style.transform = "scale(" + f + ")";
     s.style.marginBottom = (-(1 - f) * s.offsetHeight) + "px";
     s.style.marginLeft = s.style.marginRight = f < 1 ? (-(1 - f) * breite / 2) + "px" : "auto";
   }
   window.addEventListener("resize", skaliere);
+
+  // ---------- Unterschrift per Touch ----------
+  var pad = $("pad"), ctx = pad.getContext("2d"), aktuell = null, leer = true, zeichnet = false, punkte = [];
+  function heute() { return new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }); }
+  function padGroesse() {
+    var dpr = window.devicePixelRatio || 1, r = pad.getBoundingClientRect();
+    pad.width = Math.round(r.width * dpr); pad.height = Math.round(r.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#14286e"; ctx.lineWidth = 2.8;
+    leer = true;
+  }
+  function pos(e) { var r = pad.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+  pad.addEventListener("pointerdown", function (e) {
+    e.preventDefault(); pad.setPointerCapture(e.pointerId);
+    zeichnet = true; punkte = [pos(e)];
+    ctx.beginPath(); ctx.arc(punkte[0].x, punkte[0].y, ctx.lineWidth / 2, 0, Math.PI * 2); ctx.fillStyle = ctx.strokeStyle; ctx.fill();
+    leer = false;
+  });
+  pad.addEventListener("pointermove", function (e) {
+    if (!zeichnet) return;
+    e.preventDefault();
+    var ereignisse = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    (ereignisse.length ? ereignisse : [e]).forEach(function (ev) {
+      punkte.push(pos(ev));
+      var n = punkte.length; if (n < 3) return;
+      var a = punkte[n - 3], b = punkte[n - 2], c = punkte[n - 1];
+      ctx.beginPath();
+      ctx.moveTo((a.x + b.x) / 2, (a.y + b.y) / 2);
+      ctx.quadraticCurveTo(b.x, b.y, (b.x + c.x) / 2, (b.y + c.y) / 2);
+      ctx.stroke();
+    });
+  });
+  ["pointerup", "pointercancel", "pointerleave"].forEach(function (t) {
+    pad.addEventListener(t, function () {
+      if (zeichnet && punkte.length === 2) { ctx.beginPath(); ctx.moveTo(punkte[0].x, punkte[0].y); ctx.lineTo(punkte[1].x, punkte[1].y); ctx.stroke(); }
+      zeichnet = false;
+    });
+  });
+  $("padLoeschen").onclick = padGroesse;
+
+  function zuschneiden() {
+    var w = pad.width, h = pad.height, d = ctx.getImageData(0, 0, w, h).data;
+    var x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) {
+      if (d[(y * w + x) * 4 + 3] > 10) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+    if (x1 < 0) return null;
+    var rand = 6; x0 = Math.max(0, x0 - rand); y0 = Math.max(0, y0 - rand); x1 = Math.min(w - 1, x1 + rand); y1 = Math.min(h - 1, y1 + rand);
+    var bw = x1 - x0 + 1, bh = y1 - y0 + 1, f = Math.min(1, 900 / bw, 300 / bh);
+    var c = document.createElement("canvas"); c.width = Math.round(bw * f); c.height = Math.round(bh * f);
+    c.getContext("2d").drawImage(pad, x0, y0, bw, bh, 0, 0, c.width, c.height);
+    return { bild: c.toDataURL("image/png"), b: c.width, h: c.height };
+  }
+
+  function oeffneUnterschrift(m) {
+    aktuell = m;
+    $("ovTitel").textContent = "Unterschrift: " + m.name + (m.spind ? " – Spind " + m.spind : "") + (m.raum ? " – Raum " + m.raum : "");
+    $("ovDoc").innerHTML = seite(m, true);
+    $("overlay").hidden = false;
+    document.body.style.overflow = "hidden";
+    requestAnimationFrame(function () { padGroesse(); skaliereIn($("ovDoc"), $("ovDoc")); });
+  }
+  function schliesseUnterschrift() {
+    $("overlay").hidden = true; document.body.style.overflow = ""; aktuell = null;
+  }
+  $("ovAbbrechen").onclick = schliesseUnterschrift;
+  window.addEventListener("resize", function () { if (!$("overlay").hidden && leer) padGroesse(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !$("overlay").hidden) schliesseUnterschrift(); });
+
+  $("padOk").onclick = async function () {
+    if (leer) { $("padOk").textContent = "Bitte zuerst unterschreiben"; setTimeout(function () { $("padOk").textContent = "Unterschrift übernehmen"; }, 1500); return; }
+    var bild = zuschneiden(); if (!bild) return;
+    var m = aktuell;
+    m.sig = { bild: bild.bild, b: bild.b, h: bild.h, ort: $("ort").value.trim(), datum: heute(), zeit: new Date().toISOString() };
+    await dbSet(sigSchluessel(m), m.sig);
+    schliesseUnterschrift();
+    zeigeListe(); zeichneVorschau();
+    var gespeichert = await speichereInSigOrdner(m);
+    status(m.name + " hat unterschrieben." + (gespeichert ? " PDF gespeichert unter " + gespeichert + "." : ""));
+    $("suche").value = ""; wendeFilterAn(); $("suche").focus();
+  };
+
+  // Optional: jede unterschriebene PDF sofort in einen festen Ordner schreiben (Edge/Chrome)
+  var sigOrdner = null;
+  if (ordnerMoeglich) {
+    $("sigOrdner").hidden = false;
+    dbGet("sigOrdner").then(function (h) { if (h) { sigOrdner = h; zeigeSigOrdner(); } });
+  }
+  function zeigeSigOrdner() {
+    $("sigOrdnerInfo").textContent = sigOrdner
+      ? "Unterschriebene PDFs werden sofort im Ordner „" + sigOrdner.name + "“ gespeichert" + (mitRaum ? " (Unterordner je Raum)." : ".")
+      : "Unterschriften werden in diesem Browser gespeichert. Die PDFs erstellen Sie dann mit den Knöpfen oben.";
+  }
+  zeigeSigOrdner();
+  $("sigOrdner").onclick = async function () {
+    try { sigOrdner = await window.showDirectoryPicker({ mode: "readwrite" }); }
+    catch (e) { return; }
+    await dbSet("sigOrdner", sigOrdner); zeigeSigOrdner();
+  };
+  async function speichereInSigOrdner(m) {
+    if (!sigOrdner) return "";
+    try {
+      var opt = { mode: "readwrite" };
+      if ((await sigOrdner.queryPermission(opt)) !== "granted" && (await sigOrdner.requestPermission(opt)) !== "granted") return "";
+      var ziel = m.ordner ? await sigOrdner.getDirectoryHandle(m.ordner, { create: true }) : sigOrdner;
+      var w = await (await ziel.getFileHandle(m.datei, { create: true })).createWritable();
+      await w.write(erstellePdf(m).output("blob")); await w.close();
+      return sigOrdner.name + "/" + (m.ordner ? m.ordner + "/" : "") + m.datei;
+    } catch (e) { status("PDF konnte nicht im Ordner gespeichert werden: " + e.message, "warn"); return ""; }
+  }
+
+  $("sigLoeschen").onclick = async function () {
+    var keys = ((await dbKeys()) || []).filter(function (k) { return String(k).indexOf("sig:") === 0; });
+    if (!keys.length) { status("Es sind keine Unterschriften gespeichert."); return; }
+    if (!confirm(keys.length + " gespeicherte Unterschrift(en) in diesem Browser endgültig löschen?\n\nBereits gespeicherte PDFs bleiben erhalten.")) return;
+    await Promise.all(keys.map(dbDel));
+    mitarbeiter.forEach(function (m) { m.sig = null; });
+    zeigeListe(); zeichneVorschau(); status(keys.length + " Unterschrift(en) gelöscht.");
+  };
 
   $("drucken").onclick = function () {
     $("druck").innerHTML = ausgewaehlt().map(seite).join("");
