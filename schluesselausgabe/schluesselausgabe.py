@@ -130,12 +130,16 @@ def lies_mitarbeiter(pfad: Path, blatt: str | None = None):
 
     ergebnis = []
     for z in zeilen[zi + 1:]:
-        if i_vor is not None or i_nach is not None:
-            name = " ".join(t for t in (zelle(z, i_vor), zelle(z, i_nach)) if t)
-            if not name:
-                name = zelle(z, i_name)
-        else:
-            name = zelle(z, i_name)
+        vor, nach = zelle(z, i_vor), zelle(z, i_nach)
+        if not vor and not nach:
+            # Nur eine Namensspalte: "Mustermann, Max" oder "Max Mustermann" (letztes Wort = Nachname)
+            voll = zelle(z, i_name).strip()
+            if "," in voll:
+                nach, vor = (t.strip() for t in voll.split(",", 1))
+            elif voll:
+                *v, nach = voll.split()
+                vor = " ".join(v)
+        name = " ".join(t for t in (vor, nach) if t)
         spind = zelle(z, i_spind)
         raum = zelle(z, i_raum)
         if spind.endswith(".0"):  # Excel liefert Zahlen manchmal als 101.0
@@ -143,8 +147,8 @@ def lies_mitarbeiter(pfad: Path, blatt: str | None = None):
         if raum.endswith(".0"):
             raum = raum[:-2]
         if name:
-            ergebnis.append((name, spind, raum))
-    ergebnis.sort(key=lambda m: (not m[2], natuerlich(m[2]), m[0].lower()))
+            ergebnis.append((name, spind, raum, vor, nach))
+    ergebnis.sort(key=lambda m: (not m[2], natuerlich(m[2]), m[4].lower(), m[3].lower()))
     return ergebnis
 
 
@@ -223,9 +227,10 @@ def ordnername(raum: str) -> str:
     return f"Raum_{r}" if r[0].isdigit() else r
 
 
-def dateiname(name: str, spind: str) -> str:
-    """Gleiches Schema wie Schluesselausgabe.html, z. B. Schluesselausgabe_Juergen_Weiss_Spind_7.pdf"""
-    return "Schluesselausgabe_" + (sicher(name) or "Mitarbeiter") + (f"_Spind_{sicher(spind)}" if spind else "")
+def dateiname(vor: str, nach: str, spind: str) -> str:
+    """Gleiches Schema wie Schluesselausgabe.html, z. B. Weiss_Juergen_Spind_7_Schluesselausgabe"""
+    name = "_".join(t for t in (sicher(nach), sicher(vor)) if t) or "Mitarbeiter"
+    return name + (f"_Spind_{sicher(spind)}" if spind else "") + "_Schluesselausgabe"
 
 
 def main():
@@ -248,10 +253,10 @@ def main():
         ordner = a.ausgabe if a.ausgabe.suffix.lower() != ".pdf" else a.ausgabe.with_suffix("")
         ordner.mkdir(parents=True, exist_ok=True)
         vergeben = set()
-        for name, spind, raum in mitarbeiter:
+        for name, spind, raum, vor, nach in mitarbeiter:
             ziel = ordner / ordnername(raum) if mit_raum else ordner
             ziel.mkdir(exist_ok=True)
-            basis = dateiname(name, spind)
+            basis = dateiname(vor, nach, spind)
             datei, n = basis, 2
             while datei.lower() in vergeben:
                 datei, n = f"{basis}_{n}", n + 1
@@ -263,7 +268,7 @@ def main():
     else:
         c = canvas.Canvas(str(a.ausgabe), pagesize=A4)
         c.setTitle(TITEL)
-        for name, spind, raum in mitarbeiter:
+        for name, spind, raum, _, _ in mitarbeiter:
             zeichne_seite(c, name, spind, raum, a.firma, mit_raum)
         c.save()
         print(f"{len(mitarbeiter)} Seiten erstellt: {a.ausgabe}")

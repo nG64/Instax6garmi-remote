@@ -229,13 +229,20 @@
       if (iSpind >= 0 && (iName >= 0 || iNach >= 0)) {
         var liste = [];
         zeilen.slice(zi + 1).forEach(function (z) {
-          var name = (iVor >= 0 || iNach >= 0) ? [z[iVor] || "", z[iNach] || ""].filter(Boolean).join(" ") : "";
-          if (!name && iName >= 0) name = z[iName] || "";
-          if (name) liste.push({ name: name, spind: (z[iSpind] || "").replace(/\.0$/, ""),
+          var vor = iVor >= 0 ? z[iVor] || "" : "", nach = iNach >= 0 ? z[iNach] || "" : "";
+          if (!vor && !nach && iName >= 0) {
+            // Nur eine Namensspalte: „Mustermann, Max“ oder „Max Mustermann“ (letztes Wort = Nachname)
+            var voll = (z[iName] || "").trim();
+            if (voll.indexOf(",") >= 0) { nach = voll.split(",")[0].trim(); vor = voll.split(",").slice(1).join(",").trim(); }
+            else { var teile = voll.split(/\s+/); nach = teile.pop() || ""; vor = teile.join(" "); }
+          }
+          var name = [vor, nach].filter(Boolean).join(" ");
+          if (name) liste.push({ name: name, vor: vor, nach: nach, spind: (z[iSpind] || "").replace(/\.0$/, ""),
             raum: iRaum >= 0 ? (z[iRaum] || "").replace(/\.0$/, "") : "", an: true });
         });
         var sortierer = new Intl.Collator("de", { numeric: true, sensitivity: "base" });
-        liste.sort(function (a, b) { return (!a.raum - !b.raum) || sortierer.compare(a.raum, b.raum) || sortierer.compare(a.name, b.name); });
+        liste.sort(function (a, b) { return (!a.raum - !b.raum) || sortierer.compare(a.raum, b.raum) ||
+          sortierer.compare(a.nach, b.nach) || sortierer.compare(a.vor, b.vor); });
         return { ok: true, liste: liste, kopf: zeilen[zi], mitRaum: iRaum >= 0 };
       }
     }
@@ -275,7 +282,9 @@
     var vergeben = {};
     mitarbeiter.forEach(function (m) {
       m.ordner = ordnerName(m);
-      var basis = "Schluesselausgabe_" + (sicher(m.name) || "Mitarbeiter") + (m.spind ? "_Spind_" + sicher(m.spind) : "");
+      // Nachname_Vorname_Spind_<Nr>_Schluesselausgabe
+      var basis = ([sicher(m.nach), sicher(m.vor)].filter(Boolean).join("_") || "Mitarbeiter") +
+        (m.spind ? "_Spind_" + sicher(m.spind) : "") + "_Schluesselausgabe";
       var name = basis, n = 2;
       while (vergeben[name.toLowerCase()]) name = basis + "_" + n++;
       vergeben[name.toLowerCase()] = true;
@@ -292,10 +301,10 @@
     var html = '<div class="actions"><span><b>' + mitarbeiter.length + "</b> Mitarbeiter gefunden" + (anzRaeume ? " in <b>" + anzRaeume + "</b> " + (anzRaeume === 1 ? "Raum" : "Räumen") : "") + ".</span>" +
       '<button class="sec" type="button" id="alle">Alle auswählen</button><button class="sec" type="button" id="keine">Keine</button></div>' +
       (ohneSpind ? '<div class="warn">' + ohneSpind + " Mitarbeiter ohne Spindnummer. Dort bleibt die Nummer zum Ausfüllen frei.</div>" : "") +
-      '<div class="list-wrap"><table><thead><tr><th class="x">✓</th><th>Name</th><th>Spind</th>' + (mitRaum ? "<th>Raum</th>" : "") + '<th>Ordner / Dateiname</th><th></th></tr></thead><tbody>';
+      '<div class="list-wrap"><table><thead><tr><th class="x">✓</th><th>Nachname, Vorname</th><th>Spind</th>' + (mitRaum ? "<th>Raum</th>" : "") + '<th>Ordner / Dateiname</th><th></th></tr></thead><tbody>';
     mitarbeiter.forEach(function (m, i) {
       html += '<tr><td class="x"><input type="checkbox" data-i="' + i + '"' + (m.an ? " checked" : "") + "></td><td>" +
-        esc(m.name) + "</td><td>" + (m.spind ? esc(m.spind) : '<span class="hint">–</span>') + "</td>" +
+        esc([m.nach, m.vor].filter(Boolean).join(", ")) + "</td><td>" + (m.spind ? esc(m.spind) : '<span class="hint">–</span>') + "</td>" +
         (mitRaum ? "<td>" + (m.raum ? esc(m.raum) : '<span class="hint">–</span>') + "</td>" : "") + '<td class="datei">' +
         (m.ordner ? "<b>" + esc(m.ordner) + "</b>/" : "") + esc(m.datei) + '</td><td><button class="mini" type="button" data-pdf="' + i + '">PDF</button></td></tr>';
     });
