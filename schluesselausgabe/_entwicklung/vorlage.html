@@ -138,7 +138,7 @@
   "use strict";
   var STANDARD = {
     titel: "Empfangsbestätigung Spindschlüssel",
-    text: "Hiermit bestätige ich den Erhalt von zwei Spindschlüsseln für die Kaue auf dem Betriebshof Hamme.\n\nWeiterhin bestätige ich mit meiner Unterschrift, die Regelungsabrede Nr. 46 „Regelungsabrede zur Nutzung der Kaue auf dem Betriebshof Hamme der Stadtwerke Bochum Gruppe“ zur Kenntnis genommen zu haben.\n\nBeschädigungen am Spind sowie ein möglicher Verlust eines Schlüssels sind dem Team Gebäudemanagement (N-GB) unverzüglich zu melden."
+    text: "Hiermit bestätige ich den Erhalt von 2 Schlüsseln für den mir zugewiesenen Spind Nr. {spind} auf dem Betriebshof Hamme.\n\nIch verpflichte mich, die Schlüssel sorgfältig aufzubewahren, sie nicht an Dritte weiterzugeben und keine Kopien anfertigen zu lassen. Ein Verlust eines Schlüssels oder eine Beschädigung des Spindes ist unverzüglich dem Team Gebäudemanagement N-GB zu melden.\n\nBei Beendigung des Arbeitsverhältnisses oder auf Aufforderung sind die Schlüssel umgehend zurückzugeben.\n\nWeiterhin bestätige ich mit meiner Unterschrift, die Regelungsabrede Nr. 46 „Regelungsabrede zur Nutzung der Kaue auf dem Betriebshof Hamme der Stadtwerke Bochum Gruppe“ zur Kenntnis genommen zu haben."
   };
   var $ = function (id) { return document.getElementById(id); };
   var mappe = null, mitarbeiter = [], mitRaum = false;
@@ -157,15 +157,15 @@
   function speichern(k, v) { try { localStorage.setItem("schluessel." + k, v); } catch (e) {} }
   $("firma").value = laden("firma", "");
   $("titel").value = laden("titel", STANDARD.titel);
-  $("text").value = laden("text2", STANDARD.text);
+  $("text").value = laden("text3", STANDARD.text);
   $("datum").value = new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
   ["firma", "titel", "text"].forEach(function (k) {
-    $(k).addEventListener("input", function () { speichern(k === "text" ? "text2" : k, $(k).value); zeichneVorschau(); });
+    $(k).addEventListener("input", function () { speichern(k === "text" ? "text3" : k, $(k).value); zeichneVorschau(); });
   });
   $("datum").addEventListener("input", zeichneVorschau);
   $("zuruecksetzen").onclick = function () {
     $("titel").value = STANDARD.titel; $("text").value = STANDARD.text;
-    speichern("titel", STANDARD.titel); speichern("text2", STANDARD.text); zeichneVorschau();
+    speichern("titel", STANDARD.titel); speichern("text3", STANDARD.text); zeichneVorschau();
   };
 
   // ---------- Datei laden ----------

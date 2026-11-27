@@ -38,11 +38,13 @@ from reportlab.pdfbase.ttfonts import TTFont
 # ---------------------------------------------------------------------------
 TITEL = "Empfangsbestätigung Spindschlüssel"
 TEXT = """
-Hiermit bestätige ich den Erhalt von zwei Spindschlüsseln für die Kaue auf dem Betriebshof Hamme.
+Hiermit bestätige ich den Erhalt von 2 Schlüsseln für den mir zugewiesenen Spind Nr. {spind} auf dem Betriebshof Hamme.
+<br/><br/>
+Ich verpflichte mich, die Schlüssel sorgfältig aufzubewahren, sie nicht an Dritte weiterzugeben und keine Kopien anfertigen zu lassen. Ein Verlust eines Schlüssels oder eine Beschädigung des Spindes ist unverzüglich dem Team Gebäudemanagement N-GB zu melden.
+<br/><br/>
+Bei Beendigung des Arbeitsverhältnisses oder auf Aufforderung sind die Schlüssel umgehend zurückzugeben.
 <br/><br/>
 Weiterhin bestätige ich mit meiner Unterschrift, die Regelungsabrede Nr. 46 „Regelungsabrede zur Nutzung der Kaue auf dem Betriebshof Hamme der Stadtwerke Bochum Gruppe“ zur Kenntnis genommen zu haben.
-<br/><br/>
-Beschädigungen am Spind sowie ein möglicher Verlust eines Schlüssels sind dem Team Gebäudemanagement (N-GB) unverzüglich zu melden.
 """
 
 
